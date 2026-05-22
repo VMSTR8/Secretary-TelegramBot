@@ -1,0 +1,38 @@
+# AI (Oh mein God! He's use AI!)
+.cursor
+.CLAUDE
+AGENTS.md
+
+# internal doc
+docs/
+
+# OS X
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Go binaries & build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.prof
+*.out
+*.coverprofile
+/bin/
+
+# IDEs & Editors
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment & Logs
+*.log
+.env
+.env.*
+!.env.example
