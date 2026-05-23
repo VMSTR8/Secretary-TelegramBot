@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"noirbot/internal/gateway/telegram"
+	"noirbot/internal/gateways/telegram"
 	"os"
 
 	"github.com/kelseyhightower/envconfig"
@@ -50,7 +50,7 @@ func newBot(lc fx.Lifecycle, cfg *Config, logger *slog.Logger) (*telegram.Bot, e
 		OnStart: func(ctx context.Context) error {
 			go func() {
 				if err := b.Start(ctx); err != nil {
-					slog.Error("telegram gateway error", slog.String("error", err.Error()))
+					slog.Error("telegram gateways error", slog.String("error", err.Error()))
 				}
 			}()
 			return nil

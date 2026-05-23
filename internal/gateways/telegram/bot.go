@@ -24,7 +24,7 @@ func NewTelegramBot(cfg *Config, logger *slog.Logger) (*Bot, error) {
 	}
 	return &Bot{
 		bot:    b,
-		logger: logger.With("component", "telegram-gateway"),
+		logger: logger.With("component", "telegram-gateways"),
 	}, nil
 }
 
@@ -36,5 +36,5 @@ func (b *Bot) Start(ctx context.Context) error {
 }
 
 func (b *Bot) Stop() {
-	b.logger.Info("telegram gateway stopped")
+	b.logger.Info("telegram gateways stopped")
 }
