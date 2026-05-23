@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
+	"noirbot/internal/gateway/telegram"
 	"os"
 
 	"github.com/kelseyhightower/envconfig"
@@ -17,6 +19,7 @@ func main() {
 	app := fx.New(
 		fx.Provide(
 			newConfig,
+			newBot,
 		),
 		fx.Invoke(
 			func(cfg *Config) {
@@ -34,4 +37,25 @@ func newConfig() (*Config, error) {
 		return nil, fmt.Errorf("could not process env vars: %w", err)
 	}
 	return cfg, nil
+}
+
+func newBot(lc fx.Lifecycle, cfg *Config, logger *slog.Logger) (*telegram.Bot, error) {
+	b, err := telegram.NewTelegramBot(&telegram.Config{
+		BotToken: cfg.BotToken}, logger)
+	if err != nil {
+		return nil, fmt.Errorf("could not create telegram bot: %w", err)
+	}
+
+	lc.Append(fx.Hook{
+		OnStart: func(ctx context.Context) error {
+			go func() {
+				if err := b.Start(ctx); err != nil {
+					slog.Error("telegram gateway error", slog.String("error", err.Error()))
+				}
+			}()
+			return nil
+		},
+	})
+
+	return b, nil
 }
