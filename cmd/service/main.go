@@ -1,14 +1,15 @@
 package main
 
 import (
-	"context"
-	"fmt"
 	"log/slog"
-	"noirbot/internal/gateways/telegram"
+	"noirbot/internal/domain/repository"
+	"noirbot/internal/domain/service"
+	"noirbot/internal/gateways/memory"
 	"os"
 
-	"github.com/kelseyhightower/envconfig"
 	"go.uber.org/fx"
+
+	"noirbot/pkg/config"
 )
 
 func main() {
@@ -18,12 +19,17 @@ func main() {
 
 	app := fx.New(
 		fx.Provide(
-			newConfig,
-			newBot,
+			newLogger,
+			config.Load,
+			newGreetingDetector,
+			newFloodDetector,
+			newOwnerWhitelist,
+			newBusinessConnectionStore,
+			newMessageWindowStore,
 		),
 		fx.Invoke(
-			func(cfg *Config) {
-				slog.Info("config loaded")
+			func(log *slog.Logger) {
+				log.Info("bot starting...")
 			},
 		),
 	)
@@ -31,31 +37,32 @@ func main() {
 	app.Run()
 }
 
-func newConfig() (*Config, error) {
-	cfg := &Config{}
-	if err := envconfig.Process("", cfg); err != nil {
-		return nil, fmt.Errorf("could not process env vars: %w", err)
-	}
-	return cfg, nil
+func newLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}))
 }
 
-func newBot(lc fx.Lifecycle, cfg *Config, logger *slog.Logger) (*telegram.Bot, error) {
-	b, err := telegram.NewTelegramBot(&telegram.Config{
-		BotToken: cfg.BotToken}, logger)
-	if err != nil {
-		return nil, fmt.Errorf("could not create telegram bot: %w", err)
-	}
+func newGreetingDetector(cfg *config.Config) *service.GreetingDetector {
+	return service.NewGreetingDetector(cfg.Greetings)
+}
 
-	lc.Append(fx.Hook{
-		OnStart: func(ctx context.Context) error {
-			go func() {
-				if err := b.Start(ctx); err != nil {
-					slog.Error("telegram gateways error", slog.String("error", err.Error()))
-				}
-			}()
-			return nil
-		},
-	})
+func newFloodDetector(cfg *config.Config, store repository.MessageWindowStore) *service.FloodDetector {
+	return service.NewFloodDetector(service.FloodDetectorConfig{
+		WindowDuration: cfg.Flood.WindowDuration,
+		MaxLen:         cfg.Flood.MaxLen,
+		Threshold:      cfg.Flood.Threshold,
+	}, store)
+}
 
-	return b, nil
+func newOwnerWhitelist(cfg *config.Config) repository.OwnerWhitelist {
+	return memory.NewOwnerWhitelist(cfg.AllowedOwners)
+}
+
+func newBusinessConnectionStore() repository.BusinessConnectionStore {
+	return memory.NewBusinessConnectionStore()
+}
+
+func newMessageWindowStore() repository.MessageWindowStore {
+	return memory.NewMessageWindowStore()
 }

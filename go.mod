@@ -2,11 +2,12 @@ module noirbot
 
 go 1.26.3
 
-require go.uber.org/fx v1.24.0
+require (
+	github.com/kelseyhightower/envconfig v1.4.0
+	go.uber.org/fx v1.24.0
+)
 
 require (
-	github.com/go-telegram/bot v1.21.0 // indirect
-	github.com/kelseyhightower/envconfig v1.4.0 // indirect
 	go.uber.org/dig v1.19.0 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
 	go.uber.org/zap v1.26.0 // indirect
