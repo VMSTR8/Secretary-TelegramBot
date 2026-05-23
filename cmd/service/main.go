@@ -13,10 +13,6 @@ import (
 )
 
 func main() {
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	})))
-
 	app := fx.New(
 		fx.Provide(
 			newLogger,
