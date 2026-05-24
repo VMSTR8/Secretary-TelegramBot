@@ -37,7 +37,7 @@ type DeepSeekConfig struct {
 }
 
 type BotConfig struct {
-	SystemPromt string `envconfig:"BOT_SYSTEM_PROMT" required:"true"`
+	SystemPrompt string `envconfig:"BOT_SYSTEM_PROMPT" required:"true"`
 }
 
 type FloodConfig struct {
