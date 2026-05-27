@@ -17,6 +17,7 @@ func (m *UpdateMapper) ToIncomingMessage(src *tgmodels.Message) (model.IncomingM
 	if src == nil || src.From == nil || src.Text == "" {
 		return model.IncomingMessage{}, false
 	}
+
 	return model.IncomingMessage{
 		BusinessConnectionID: src.BusinessConnectionID,
 		GuestID:              src.From.ID,
@@ -37,5 +38,6 @@ func (m *UpdateMapper) ToBusinessConnection(src *tgmodels.BusinessConnection) mo
 	if src.Rights != nil {
 		conn.CanReply = src.Rights.CanReply
 	}
+
 	return conn
 }

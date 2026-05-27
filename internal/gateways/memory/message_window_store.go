@@ -33,6 +33,7 @@ func (s *MessageWindowStore) Append(_ context.Context, ownerID, guestID int64, _
 	defer s.mu.Unlock()
 
 	s.windows[key] = append(s.windows[key], time.Now())
+
 	return nil
 }
 
@@ -50,6 +51,7 @@ func (s *MessageWindowStore) CountSince(_ context.Context, ownerID, guestID int6
 			fresh = append(fresh, t)
 		}
 	}
+
 	s.windows[key] = fresh
 
 	return len(fresh), nil

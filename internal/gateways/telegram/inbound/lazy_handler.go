@@ -27,8 +27,10 @@ func (h *LazyHandler) Set(fn bot.HandlerFunc) {
 func (h *LazyHandler) Handle(ctx context.Context, b *bot.Bot, update *models.Update) {
 	fn := h.fn.Load()
 	if fn == nil {
-		h.log.Warn("lazy handler called before Set — update dropped")
+		h.log.WarnContext(ctx, "lazy handler called before Set — update dropped")
+
 		return
 	}
+
 	(*fn)(ctx, b, update)
 }

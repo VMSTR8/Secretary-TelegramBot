@@ -30,5 +30,6 @@ func (s *Sender) Send(ctx context.Context, draft model.ReplyDraft) error {
 	if err != nil {
 		return fmt.Errorf("telegram send message: %w", err)
 	}
+
 	return nil
 }

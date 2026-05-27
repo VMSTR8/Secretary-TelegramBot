@@ -15,6 +15,7 @@ func NewGreetingDetector(greetings []string) *GreetingDetector {
 	for _, g := range greetings {
 		tokens[strings.ToLower(g)] = struct{}{}
 	}
+
 	return &GreetingDetector{tokens: tokens}
 }
 
@@ -33,7 +34,6 @@ func (d *GreetingDetector) Detect(msg model.IncomingMessage) model.TriggerDecisi
 
 func normalize(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))
-	return strings.TrimFunc(s, func(r rune) bool {
-		return unicode.IsPunct(r)
-	})
+
+	return strings.TrimFunc(s, unicode.IsPunct)
 }

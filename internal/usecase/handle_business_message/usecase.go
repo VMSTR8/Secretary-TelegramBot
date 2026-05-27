@@ -64,6 +64,7 @@ func (uc *Usecase) Execute(ctx context.Context, msg model.IncomingMessage) error
 		uc.log.InfoContext(ctx, "owner not in whitelist, skip",
 			slog.Int64("owner_id", owner.UserID),
 		)
+
 		return nil
 	}
 
@@ -73,6 +74,7 @@ func (uc *Usecase) Execute(ctx context.Context, msg model.IncomingMessage) error
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrFloodDetect, err)
 	}
+
 	if !decision.ShouldReply() {
 		return nil
 	}
@@ -105,6 +107,7 @@ func (uc *Usecase) resolveOwner(ctx context.Context, connectionID string) (model
 	if err != nil {
 		return model.Owner{}, fmt.Errorf("store get: %w", err)
 	}
+
 	if ok {
 		return conn.Owner, nil
 	}

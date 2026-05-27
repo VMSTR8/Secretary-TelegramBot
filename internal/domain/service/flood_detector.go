@@ -36,6 +36,7 @@ func (d *FloodDetector) Detect(ctx context.Context, msg model.IncomingMessage) (
 	}
 
 	since := time.Now().Add(-d.cfg.WindowDuration)
+
 	count, err := d.store.CountSince(ctx, msg.OwnerID, msg.GuestID, since)
 	if err != nil {
 		return model.TriggerDecision{}, fmt.Errorf("flood detector count: %w", err)

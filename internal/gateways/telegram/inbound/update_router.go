@@ -30,28 +30,31 @@ func NewUpdateRouter(
 		log:    log.With("component", "update_router"),
 	}
 }
+
 func (r *UpdateRouter) Handle(ctx context.Context, _ *bot.Bot, update *models.Update) {
 	switch {
 	case update.BusinessConnection != nil:
 		conn := r.mapper.ToBusinessConnection(update.BusinessConnection)
 		if err := r.connUC.Execute(ctx, conn); err != nil {
-			r.log.Warn("handle_business_connection failed", "err", err)
+			r.log.WarnContext(ctx, "handle_business_connection failed", "err", err)
 		}
 	case update.BusinessMessage != nil:
 		msg, ok := r.mapper.ToIncomingMessage(update.BusinessMessage)
 		if !ok {
-			r.log.Warn("failed to map business_message", "update_id", update.ID)
+			r.log.WarnContext(ctx, "failed to map business_message", "update_id", update.ID)
+
 			return
 		}
+
 		if err := r.msgUC.Execute(ctx, msg); err != nil {
-			r.log.Error("handle_business_message_failed",
+			r.log.ErrorContext(ctx, "handle_business_message failed",
 				"err", err,
 				"guest_id", msg.GuestID,
 				"conn_id", msg.BusinessConnectionID,
 			)
 		}
 	default:
-		r.log.Debug("unhandled update type", "update_id", update.ID)
+		r.log.DebugContext(ctx, "unhandled update type", "update_id", update.ID)
 	}
 }
 

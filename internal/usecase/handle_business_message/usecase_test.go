@@ -4,16 +4,19 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"testing"
-	"time"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
-
 	"noirbot/internal/domain/model"
 	"noirbot/internal/domain/repository/mock"
 	"noirbot/internal/domain/service"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
+)
+
+var (
+	errDeepseekTimeoutStub   = errors.New("deepseek timeout")
+	errTelegramRateLimitStub = errors.New("telegram 429")
 )
 
 var (
@@ -42,6 +45,7 @@ func newUsecase(
 	sender *mock.MockBusinessSender,
 ) *Usecase {
 	t.Helper()
+
 	greeting := service.NewGreetingDetector([]string{"привет", "здоров"})
 
 	ctrl := gomock.NewController(t)
@@ -153,7 +157,7 @@ func TestUsecase_Execute(t *testing.T) {
 				connStore.EXPECT().Get(ctx, testConn.ID).Return(testConn, true, nil)
 				whitelist.EXPECT().IsAllowed(ctx, testConn.Owner.UserID).Return(true, nil)
 				llm.EXPECT().Generate(ctx, systemPrompt, testMsg.Text).
-					Return("", errors.New("deepseek timeout"))
+					Return("", errDeepseekTimeoutStub)
 
 				return newUsecase(t, whitelist, connStore, accountReader, llm, sender)
 			},
@@ -172,7 +176,7 @@ func TestUsecase_Execute(t *testing.T) {
 				connStore.EXPECT().Get(ctx, testConn.ID).Return(testConn, true, nil)
 				whitelist.EXPECT().IsAllowed(ctx, testConn.Owner.UserID).Return(true, nil)
 				llm.EXPECT().Generate(ctx, systemPrompt, testMsg.Text).Return(testReply, nil)
-				sender.EXPECT().Send(ctx, gomock.Any()).Return(errors.New("telegram 429"))
+				sender.EXPECT().Send(ctx, gomock.Any()).Return(errTelegramRateLimitStub)
 
 				return newUsecase(t, whitelist, connStore, accountReader, llm, sender)
 			},
@@ -229,9 +233,7 @@ func TestUsecase_Execute(t *testing.T) {
 			err := uc.Execute(ctx, tt.msg)
 
 			if tt.wantErr != nil {
-				require.Error(t, err)
-				assert.True(t, errors.Is(err, tt.wantErr),
-					"ожидали %v, получили %v", tt.wantErr, err)
+				require.ErrorIs(t, err, tt.wantErr)
 			} else {
 				require.NoError(t, err)
 			}

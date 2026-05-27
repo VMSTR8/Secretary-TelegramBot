@@ -25,20 +25,24 @@ func (uc *Usecase) Execute(ctx context.Context, conn model.BusinessConnection) e
 		if err := uc.store.Delete(ctx, conn.ID); err != nil {
 			return fmt.Errorf("delete business connection: %w", err)
 		}
+
 		uc.log.InfoContext(ctx, "business connection removed",
 			slog.String("connection_id", conn.ID),
 			slog.Int64("owner_id", conn.Owner.UserID),
 		)
+
 		return nil
 	}
 
 	if err := uc.store.Put(ctx, conn); err != nil {
 		return fmt.Errorf("put business connection: %w", err)
 	}
+
 	uc.log.InfoContext(ctx, "business connection saved",
 		slog.String("connection_id", conn.ID),
 		slog.Int64("owner_id", conn.Owner.UserID),
 		slog.Bool("can_reply", conn.CanReply),
 	)
+
 	return nil
 }

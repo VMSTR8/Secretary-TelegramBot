@@ -2,7 +2,6 @@ package memory
 
 import (
 	"context"
-	"fmt"
 	"noirbot/internal/domain/model"
 	"noirbot/internal/domain/repository"
 	"sync"
@@ -26,17 +25,20 @@ func (s *BusinessConnectionStore) Get(_ context.Context, connectionID string) (m
 	defer s.mu.RUnlock()
 
 	conn, ok := s.conns[connectionID]
+
 	return conn, ok, nil
 }
+
 func (s *BusinessConnectionStore) Put(_ context.Context, conn model.BusinessConnection) error {
 	if conn.ID == "" {
-		return fmt.Errorf("business connection store put: empty connection ID")
+		return ErrEmptyConnectionID
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	s.conns[conn.ID] = conn
+
 	return nil
 }
 
@@ -45,5 +47,6 @@ func (s *BusinessConnectionStore) Delete(_ context.Context, connectionID string)
 	defer s.mu.Unlock()
 
 	delete(s.conns, connectionID)
+
 	return nil
 }

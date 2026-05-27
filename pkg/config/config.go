@@ -13,27 +13,27 @@ type Config struct {
 	DeepSeek      DeepSeekConfig
 	Bot           BotConfig
 	Flood         FloodConfig
-	Greetings     []string `envconfig:"GREETINGS" default:"привет,прив,здоров,хай,ку"`
+	Greetings     []string `default:"привет,прив,здоров,хай,ку"                      envconfig:"GREETINGS"`
 	AllowedOwners []int64  `envconfig:"ALLOWED_OWNERS"`
 }
 
 type TelegramConfig struct {
-	BotToken      string `envconfig:"BOT_TOKEN" required:"true"`
+	BotToken      string `envconfig:"BOT_TOKEN"      required:"true"`
 	WebhookSecret string `envconfig:"WEBHOOK_SECRET"`
 }
 
 type HTTPConfig struct {
-	Addr            *string       `envconfig:"HTTP_ADDR" default:":8080"`
-	ReadTimeout     time.Duration `envconfig:"HTTP_READ_TIMEOUT" default:"10s"`
-	WriteTimeout    time.Duration `envconfig:"HTTP_WRITE_TIMEOUT" default:"10s"`
-	ShutdownTimeout time.Duration `envconfig:"HTTP_SHUTDOWN_TIMEOUT" default:"5s"`
+	Addr            *string       `default:":8080" envconfig:"HTTP_ADDR"`
+	ReadTimeout     time.Duration `default:"10s"   envconfig:"HTTP_READ_TIMEOUT"`
+	WriteTimeout    time.Duration `default:"10s"   envconfig:"HTTP_WRITE_TIMEOUT"`
+	ShutdownTimeout time.Duration `default:"5s"    envconfig:"HTTP_SHUTDOWN_TIMEOUT"`
 }
 
 type DeepSeekConfig struct {
-	BaseURL string        `envconfig:"DEEPSEEK_BASE_URL" default:"https://api.deepseek.com/v1"`
-	APIKey  string        `envconfig:"DEEPSEEK_API_KEY" required:"true"`
-	Model   string        `envconfig:"DEEPSEEK_MODEL" default:"deepseek-chat"`
-	Timeout time.Duration `envconfig:"DEEPSEEK_TIMEOUT" default:"30s"`
+	BaseURL string        `default:"https://api.deepseek.com/v1" envconfig:"DEEPSEEK_BASE_URL"`
+	APIKey  string        `envconfig:"DEEPSEEK_API_KEY"          required:"true"`
+	Model   string        `default:"deepseek-chat"               envconfig:"DEEPSEEK_MODEL"`
+	Timeout time.Duration `default:"30s"                         envconfig:"DEEPSEEK_TIMEOUT"`
 }
 
 type BotConfig struct {
@@ -41,9 +41,9 @@ type BotConfig struct {
 }
 
 type FloodConfig struct {
-	WindowDuration time.Duration `envconfig:"FLOOD_WINDOW" default:"60s"`
-	MaxLen         int           `envconfig:"FLOOD_MAX_LEN" default:"20"`
-	Threshold      int           `envconfig:"FLOOD_THRESHOLD" default:"5"`
+	WindowDuration time.Duration `default:"60s" envconfig:"FLOOD_WINDOW"`
+	MaxLen         int           `default:"20"  envconfig:"FLOOD_MAX_LEN"`
+	Threshold      int           `default:"5"   envconfig:"FLOOD_THRESHOLD"`
 }
 
 func Load() (*Config, error) {
@@ -51,5 +51,6 @@ func Load() (*Config, error) {
 	if err := envconfig.Process("", cfg); err != nil {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
+
 	return cfg, nil
 }

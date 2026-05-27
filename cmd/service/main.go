@@ -6,18 +6,18 @@ import (
 	"noirbot/internal/domain/repository"
 	"noirbot/internal/domain/service"
 	"noirbot/internal/gateways/deepseek"
-	httpgw "noirbot/internal/gateways/http"
 	"noirbot/internal/gateways/memory"
 	"noirbot/internal/gateways/telegram/inbound"
 	"noirbot/internal/gateways/telegram/outbound"
 	"noirbot/internal/usecase/handle_business_connection"
 	"noirbot/internal/usecase/handle_business_message"
+	"noirbot/pkg/config"
 	"os"
+
+	httpgw "noirbot/internal/gateways/http"
 
 	"github.com/go-telegram/bot"
 	"go.uber.org/fx"
-
-	"noirbot/pkg/config"
 )
 
 func main() {
@@ -84,6 +84,7 @@ func newBot(cfg *config.Config) (*bot.Bot, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create telegram bot: %w", err)
 	}
+
 	return b, nil
 }
 

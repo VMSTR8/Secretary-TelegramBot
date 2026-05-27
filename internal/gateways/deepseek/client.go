@@ -42,7 +42,6 @@ func (c *Client) Generate(ctx context.Context, systemPrompt, userText string) (s
 			{Role: "user", Content: userText},
 		},
 	})
-
 	if err != nil {
 		return "", fmt.Errorf("deepseek marshal request: %w", err)
 	}
@@ -53,7 +52,6 @@ func (c *Client) Generate(ctx context.Context, systemPrompt, userText string) (s
 		c.cfg.BaseURL+"/chat/completions",
 		bytes.NewReader(body),
 	)
-
 	if err != nil {
 		return "", fmt.Errorf("deepseek create request: %w", err)
 	}
@@ -69,7 +67,8 @@ func (c *Client) Generate(ctx context.Context, systemPrompt, userText string) (s
 
 	if resp.StatusCode != http.StatusOK {
 		errBody, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("deepseek unexpected status %d: %s", resp.StatusCode, errBody)
+
+		return "", fmt.Errorf("%w: status %d, body %s", ErrUnexpectedStatus, resp.StatusCode, errBody)
 	}
 
 	var result chatResponse
@@ -78,9 +77,8 @@ func (c *Client) Generate(ctx context.Context, systemPrompt, userText string) (s
 	}
 
 	if len(result.Choices) == 0 {
-		return "", fmt.Errorf("deepseek empty choices in response")
+		return "", ErrEmptyChoices
 	}
 
 	return result.Choices[0].Message.Content, nil
-
 }

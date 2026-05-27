@@ -36,6 +36,6 @@ func (r *AccountReader) GetConnection(ctx context.Context, connectionID string) 
 		UserChatID:  conn.UserChatID,
 		IsEnabled:   conn.IsEnabled,
 		CanReply:    conn.Rights.CanReply,
-		ConnectedAt: time.Unix(int64(conn.Date), 0),
+		ConnectedAt: time.Unix(conn.Date, 0),
 	}, nil
 }

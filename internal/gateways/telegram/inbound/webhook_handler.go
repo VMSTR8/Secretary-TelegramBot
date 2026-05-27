@@ -9,7 +9,7 @@ import (
 	"github.com/go-telegram/bot/models"
 )
 
-const telegramSecretHeader = "X-Telegram-Bot-Api-Secret-Token"
+const telegramSecretHeader = "X-Telegram-Bot-Api-Secret-Token" //nolint:gosec // G101: header name, not a credential
 
 type WebhookHandler struct {
 	handler *LazyHandler
@@ -28,6 +28,7 @@ func (wh *WebhookHandler) Handle(c *gin.Context) {
 	if err := c.ShouldBindJSON(&update); err != nil {
 		wh.log.ErrorContext(c.Request.Context(), "failed to decode update", "err", err)
 		c.AbortWithStatus(http.StatusBadRequest)
+
 		return
 	}
 
@@ -37,13 +38,16 @@ func (wh *WebhookHandler) Handle(c *gin.Context) {
 
 func (wh *WebhookHandler) SecretMiddleware(secret string) gin.HandlerFunc {
 	expected := []byte(secret)
+
 	return func(c *gin.Context) {
 		got := []byte(c.GetHeader(telegramSecretHeader))
 		if subtle.ConstantTimeCompare(got, expected) != 1 {
 			wh.log.WarnContext(c.Request.Context(), "secret mismatch", "remote_addr", c.ClientIP())
 			c.AbortWithStatus(http.StatusUnauthorized)
+
 			return
 		}
+
 		c.Next()
 	}
 }
