@@ -1,0 +1,30 @@
+# VCS
+.git
+.gitignore
+
+# IDE & AI tooling (mirror of .gitignore)
+.idea
+.vscode
+.cursor
+.CLAUDE
+AGENTS.md
+
+# Local artifacts
+bin/
+*.test
+*.out
+
+# Local environment - MUST NOT leak into image
+.env
+.env.*
+!.env.example
+
+# Documentation - not needed at runtime
+docs/
+*.md
+
+# OS X cruft
+.DS_Store
+
+# Test caches
+.go-build-cache/
