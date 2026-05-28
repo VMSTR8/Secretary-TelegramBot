@@ -27,7 +27,7 @@ func (s *Sender) Send(ctx context.Context, draft model.ReplyDraft) error {
 	_, err := s.bot.SendMessage(ctx, &bot.SendMessageParams{
 		BusinessConnectionID: draft.BusinessConnectionID,
 		ChatID:               draft.GuestID,
-		Text:                 formatForTelegramHTML(draft.Text),
+		Text:                 draft.Text,
 		ParseMode:            tgmodel.ParseModeHTML,
 	})
 	if err != nil {
