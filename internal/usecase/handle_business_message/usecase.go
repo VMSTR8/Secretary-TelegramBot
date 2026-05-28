@@ -84,19 +84,26 @@ func (uc *Usecase) Execute(ctx context.Context, msg model.IncomingMessage) error
 		slog.String("reason", decision.Reason),
 	)
 
-	// TODO: добавить retry с exponential backoff для 429 (Too Many Requests) и 503.
-	// Telegram возвращает Retry-After header с нужной задержкой.
+	replyTarget := model.ReplyDraft{
+		BusinessConnectionID: msg.BusinessConnectionID,
+		GuestID:              msg.GuestID,
+	}
+
+	if err := uc.sender.ShowThinking(ctx, replyTarget); err != nil {
+		uc.log.WarnContext(ctx, "show thinking failed",
+			slog.String("error", err.Error()),
+		)
+	}
+
 	reply, err := uc.llm.Generate(ctx, uc.cfg.SystemPrompt, msg.Text)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrLLMGenerate, err)
 	}
 
-	if err := uc.sender.Send(ctx, model.ReplyDraft{
-		BusinessConnectionID: msg.BusinessConnectionID,
-		GuestID:              msg.GuestID,
-		Text:                 reply,
-	}); err != nil {
-		return fmt.Errorf("%w: %w", ErrSend, err)
+	replyTarget.Text = reply
+
+	if sndErr := uc.sender.Send(ctx, replyTarget); sndErr != nil {
+		return fmt.Errorf("%w: %w", ErrSend, sndErr)
 	}
 
 	return nil

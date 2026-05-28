@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"noirbot/internal/domain/model"
 	"noirbot/internal/domain/repository"
+	"strconv"
 	"strings"
+	"time"
 
 	tgmodel "github.com/go-telegram/bot/models"
 	"golang.org/x/net/html"
@@ -36,6 +38,21 @@ func NewSender(b *bot.Bot) *Sender {
 	return &Sender{
 		bot: b,
 	}
+}
+
+// ShowThinking sends an ephemeral draft with empty text; Telegram shows "Thinking…".
+func (s *Sender) ShowThinking(ctx context.Context, target model.ReplyDraft) error {
+	_, err := s.bot.SendMessageDraft(ctx, &bot.SendMessageDraftParams{
+		BusinessConnectionID: target.BusinessConnectionID,
+		ChatID:               target.GuestID,
+		DraftID:              strconv.FormatInt(time.Now().UnixNano(), 10),
+		Text:                 "",
+	})
+	if err != nil {
+		return fmt.Errorf("telegram send message draft: %w", err)
+	}
+
+	return nil
 }
 
 func (s *Sender) Send(ctx context.Context, draft model.ReplyDraft) error {

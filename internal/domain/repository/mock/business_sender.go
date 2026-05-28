@@ -54,3 +54,17 @@ func (mr *MockBusinessSenderMockRecorder) Send(ctx, draft any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Send", reflect.TypeOf((*MockBusinessSender)(nil).Send), ctx, draft)
 }
+
+// ShowThinking mocks base method.
+func (m *MockBusinessSender) ShowThinking(ctx context.Context, target model.ReplyDraft) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ShowThinking", ctx, target)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ShowThinking indicates an expected call of ShowThinking.
+func (mr *MockBusinessSenderMockRecorder) ShowThinking(ctx, target any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ShowThinking", reflect.TypeOf((*MockBusinessSender)(nil).ShowThinking), ctx, target)
+}

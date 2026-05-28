@@ -17,6 +17,7 @@ import (
 var (
 	errDeepseekTimeoutStub   = errors.New("deepseek timeout")
 	errTelegramRateLimitStub = errors.New("telegram 429")
+	errTelegramDraftStub     = errors.New("telegram draft unavailable")
 )
 
 var (
@@ -35,6 +36,13 @@ var (
 	testReply    = "Ну какой привет, пиши сразу, что тебе надо!"
 	systemPrompt = "Отвечай как нуарный детектив, повидавший некоторое дерьмо"
 )
+
+func expectShowThinking(ctx context.Context, sender *mock.MockBusinessSender, msg model.IncomingMessage) {
+	sender.EXPECT().ShowThinking(ctx, model.ReplyDraft{
+		BusinessConnectionID: msg.BusinessConnectionID,
+		GuestID:              msg.GuestID,
+	}).Return(nil)
+}
 
 func newUsecase(
 	t *testing.T,
@@ -111,6 +119,7 @@ func TestUsecase_Execute(t *testing.T) {
 
 				connStore.EXPECT().Get(ctx, testConn.ID).Return(testConn, true, nil)
 				whitelist.EXPECT().IsAllowed(ctx, testConn.Owner.UserID).Return(true, nil)
+				expectShowThinking(ctx, sender, testMsg)
 				llm.EXPECT().Generate(ctx, systemPrompt, testMsg.Text).Return(testReply, nil)
 				sender.EXPECT().Send(ctx, model.ReplyDraft{
 					BusinessConnectionID: testMsg.BusinessConnectionID,
@@ -156,6 +165,7 @@ func TestUsecase_Execute(t *testing.T) {
 
 				connStore.EXPECT().Get(ctx, testConn.ID).Return(testConn, true, nil)
 				whitelist.EXPECT().IsAllowed(ctx, testConn.Owner.UserID).Return(true, nil)
+				expectShowThinking(ctx, sender, testMsg)
 				llm.EXPECT().Generate(ctx, systemPrompt, testMsg.Text).
 					Return("", errDeepseekTimeoutStub)
 
@@ -175,6 +185,7 @@ func TestUsecase_Execute(t *testing.T) {
 
 				connStore.EXPECT().Get(ctx, testConn.ID).Return(testConn, true, nil)
 				whitelist.EXPECT().IsAllowed(ctx, testConn.Owner.UserID).Return(true, nil)
+				expectShowThinking(ctx, sender, testMsg)
 				llm.EXPECT().Generate(ctx, systemPrompt, testMsg.Text).Return(testReply, nil)
 				sender.EXPECT().Send(ctx, gomock.Any()).Return(errTelegramRateLimitStub)
 
@@ -196,6 +207,30 @@ func TestUsecase_Execute(t *testing.T) {
 				accountReader.EXPECT().GetConnection(ctx, testConn.ID).Return(testConn, nil)
 				connStore.EXPECT().Put(ctx, testConn).Return(nil)
 				whitelist.EXPECT().IsAllowed(ctx, testConn.Owner.UserID).Return(true, nil)
+				expectShowThinking(ctx, sender, testMsg)
+				llm.EXPECT().Generate(ctx, systemPrompt, testMsg.Text).Return(testReply, nil)
+				sender.EXPECT().Send(ctx, gomock.Any()).Return(nil)
+
+				return newUsecase(t, whitelist, connStore, accountReader, llm, sender)
+			},
+			msg:     testMsg,
+			wantErr: nil,
+		},
+		{
+			name: "show thinking failed — LLM и Send всё равно вызываются",
+			setup: func(ctrl *gomock.Controller) *Usecase {
+				whitelist := mock.NewMockOwnerWhitelist(ctrl)
+				connStore := mock.NewMockBusinessConnectionStore(ctrl)
+				accountReader := mock.NewMockBusinessAccountReader(ctrl)
+				llm := mock.NewMockLLMClient(ctrl)
+				sender := mock.NewMockBusinessSender(ctrl)
+
+				connStore.EXPECT().Get(ctx, testConn.ID).Return(testConn, true, nil)
+				whitelist.EXPECT().IsAllowed(ctx, testConn.Owner.UserID).Return(true, nil)
+				sender.EXPECT().ShowThinking(ctx, model.ReplyDraft{
+					BusinessConnectionID: testMsg.BusinessConnectionID,
+					GuestID:              testMsg.GuestID,
+				}).Return(errTelegramDraftStub)
 				llm.EXPECT().Generate(ctx, systemPrompt, testMsg.Text).Return(testReply, nil)
 				sender.EXPECT().Send(ctx, gomock.Any()).Return(nil)
 
@@ -215,6 +250,7 @@ func TestUsecase_Execute(t *testing.T) {
 
 				connStore.EXPECT().Get(ctx, testConn.ID).Return(testConn, true, nil)
 				whitelist.EXPECT().IsAllowed(ctx, testConn.Owner.UserID).Return(true, nil)
+				expectShowThinking(ctx, sender, testMsg)
 				llm.EXPECT().Generate(ctx, systemPrompt, testMsg.Text).Return(testReply, nil)
 				sender.EXPECT().Send(ctx, gomock.Any()).Return(nil)
 
