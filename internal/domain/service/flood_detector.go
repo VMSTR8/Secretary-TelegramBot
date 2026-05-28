@@ -42,7 +42,7 @@ func (d *FloodDetector) Detect(ctx context.Context, msg model.IncomingMessage) (
 		return model.TriggerDecision{}, fmt.Errorf("flood detector count: %w", err)
 	}
 
-	if count >= d.cfg.Threshold {
+	if count == d.cfg.Threshold {
 		return model.TriggerDecision{
 			Kind:   model.TriggerKindFlood,
 			Reason: fmt.Sprintf("%d messages in %s", count, d.cfg.WindowDuration),
