@@ -1,6 +1,6 @@
 .PHONY: test lint build run tidy ci fmt docker-build docker-up docker-down docker-logs traefik-up traefik-down traefik-logs
 
-COMPOSE = docker compose -f docker/docker-compose.yaml
+COMPOSE = docker compose --env-file .env -f docker/docker-compose.yaml
 
 GO              ?= go
 GOLANGCI_LINT   ?= golangci-lint
