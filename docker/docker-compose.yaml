@@ -8,5 +8,27 @@ services:
     restart: unless-stopped
     env_file:
       - ../.env
-    ports:
-      - "8080:8080"
+
+    networks:
+      - proxy
+
+    labels:
+      # Opt-in: Traefik will only pick up containers with this flag.
+      - "traefik.enable=true"
+      # Attach the router to the `proxy` Docker network — required when
+      # the container is connected to multiple networks (defensive default).
+      - "traefik.docker.network=proxy"
+      # ----- main router for the webhook host -----
+      - "traefik.http.routers.bot.rule=Host(`${BOT_DOMAIN}`)"
+      - "traefik.http.routers.bot.entrypoints=websecure"
+      - "traefik.http.routers.bot.tls=true"
+      - "traefik.http.routers.bot.tls.certresolver=le"
+      # ----- where to forward traffic INSIDE the container -----
+      # The app listens on :8080 (HTTP_ADDR), Traefik must be told
+      # explicitly because the port is no longer published to the host.
+      - "traefik.http.services.bot.loadbalancer.server.port=8080"
+
+networks:
+  proxy:
+    external: true
+    name: proxy

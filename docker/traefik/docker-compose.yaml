@@ -1,0 +1,54 @@
+services:
+  traefik:
+    image: traefik:v3.4
+    container_name: traefik
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
+    networks:
+      - proxy
+
+    ports:
+      - "80:80"
+      - "443:443"
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./acme.json:/letsencrypt/acme.json
+
+    command:
+      # ----- entrypoints: HTTP (80) and HTTPS (443) -----
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+
+      # Force every HTTP request to upgrade to HTTPS with a 301 redirect.
+      # Telegram requires HTTPS for webhook URLs, so this is mandatory.
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--entrypoints.web.http.redirections.entrypoint.permanent=true"
+
+      # ----- providers: discover services from Docker labels -----
+      - "--providers.docker=true"
+      # Do NOT expose containers by default — each service must opt in
+      # explicitly with `traefik.enable=true` label.
+      - "--providers.docker.exposedbydefault=false"
+      # Restrict service discovery to the `proxy` network only —
+      # this prevents accidental exposure of containers from other
+      # compose stacks that happen to run on the same host.
+      - "--providers.docker.network=proxy"
+
+      # ----- Let's Encrypt resolver named `le` (HTTP-01 challenge) -----
+      - "--certificatesresolvers.le.acme.email=${LETSENCRYPT_EMAIL}"
+      - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.le.acme.httpchallenge=true"
+      - "--certificatesresolvers.le.acme.httpchallenge.entrypoint=web"
+
+      # ----- observability -----
+      - "--log.level=INFO"
+      - "--accesslog=true"
+
+networks:
+  proxy:
+    external: true
+    name: proxy

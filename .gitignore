@@ -36,3 +36,7 @@ docs/
 .env
 .env.*
 !.env.example
+
+# Traefik state
+docker/traefik/acme.json
+docker/traefik/.env
