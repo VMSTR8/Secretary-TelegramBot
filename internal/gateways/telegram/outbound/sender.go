@@ -9,6 +9,7 @@ import (
 
 	tgmodel "github.com/go-telegram/bot/models"
 	"golang.org/x/net/html"
+	"golang.org/x/net/html/atom"
 
 	"github.com/go-telegram/bot"
 )
@@ -53,8 +54,9 @@ func (s *Sender) Send(ctx context.Context, draft model.ReplyDraft) error {
 
 func sanitizeHTML(text string) string {
 	nodes, err := html.ParseFragment(strings.NewReader(text), &html.Node{
-		Type: html.ElementNode,
-		Data: "body",
+		Type:     html.ElementNode,
+		DataAtom: atom.Body,
+		Data:     "body",
 	})
 	if err != nil {
 		return html.EscapeString(text)
