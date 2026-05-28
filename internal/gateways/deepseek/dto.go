@@ -7,7 +7,7 @@ type chatMessage struct {
 
 type chatRequest struct {
 	Model    string        `json:"model"`
-	Messages []chatMessage `json:"message"`
+	Messages []chatMessage `json:"messages"`
 }
 
 type chatResponse struct {
