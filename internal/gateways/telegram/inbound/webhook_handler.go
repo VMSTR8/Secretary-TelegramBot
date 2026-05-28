@@ -1,6 +1,7 @@
 package inbound
 
 import (
+	"context"
 	"crypto/subtle"
 	"log/slog"
 	"net/http"
@@ -32,7 +33,12 @@ func (wh *WebhookHandler) Handle(c *gin.Context) {
 		return
 	}
 
-	wh.handler.Handle(c.Request.Context(), nil, &update)
+	bgCtx := context.WithoutCancel(c.Request.Context())
+
+	go func() {
+		wh.handler.Handle(bgCtx, nil, &update)
+	}()
+
 	c.Status(http.StatusOK)
 }
 
