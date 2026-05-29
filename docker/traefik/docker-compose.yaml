@@ -21,6 +21,9 @@ services:
       # ----- entrypoints: HTTP (80) and HTTPS (443) -----
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
+      # TLS-only by default on :443 — defense-in-depth in case a router
+      # forgets `tls=true`.
+      - "--entrypoints.websecure.http.tls=true"
 
       # Force every HTTP request to upgrade to HTTPS with a 301 redirect.
       # Telegram requires HTTPS for webhook URLs, so this is mandatory.
@@ -30,18 +33,12 @@ services:
 
       # ----- providers: discover services from Docker labels -----
       - "--providers.docker=true"
-      # Do NOT expose containers by default — each service must opt in
-      # explicitly with `traefik.enable=true` label.
       - "--providers.docker.exposedbydefault=false"
-      # Restrict service discovery to the `proxy` network only —
-      # this prevents accidental exposure of containers from other
-      # compose stacks that happen to run on the same host.
       - "--providers.docker.network=proxy"
 
       # ----- Let's Encrypt resolver named `le` (HTTP-01 challenge) -----
       - "--certificatesresolvers.le.acme.email=${LETSENCRYPT_EMAIL}"
       - "--certificatesresolvers.le.acme.storage=/letsencrypt/acme.json"
-      - "--certificatesresolvers.le.acme.httpchallenge=true"
       - "--certificatesresolvers.le.acme.httpchallenge.entrypoint=web"
 
       # ----- observability -----

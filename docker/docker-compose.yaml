@@ -3,39 +3,39 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    image: noirbot:local
-    container_name: noirBot
+    image: telegrambot:local
+    container_name: telegramBot
     restart: unless-stopped
     env_file:
       - ../.env
 
     networks:
-      - traefik-network
+      - proxy
     labels:
       - "traefik.enable=true"
-      - "traefik.docker.network=telegram-n8n-bot_traefik-network"
+      - "traefik.docker.network=proxy"
 
-      - "traefik.http.services.noirbot.loadbalancer.server.port=8080"
+      - "traefik.http.services.telegrambot.loadbalancer.server.port=8080"
 
-      - "traefik.http.middlewares.noirbot-headers.headers.customrequestheaders.X-Forwarded-Proto=https"
-      - "traefik.http.middlewares.noirbot-headers.headers.customrequestheaders.X-Forwarded-Port=443"
+      - "traefik.http.middlewares.telegrambot-headers.headers.customrequestheaders.X-Forwarded-Proto=https"
+      - "traefik.http.middlewares.telegrambot-headers.headers.customrequestheaders.X-Forwarded-Port=443"
 
-      - "traefik.http.routers.noirbot-webhook.rule=Host(`${BOT_DOMAIN}`) && PathPrefix(`/webhook`)"
-      - "traefik.http.routers.noirbot-webhook.entrypoints=websecure"
-      - "traefik.http.routers.noirbot-webhook.tls=true"
-      - "traefik.http.routers.noirbot-webhook.tls.certresolver=myresolver"
-      - "traefik.http.routers.noirbot-webhook.priority=100"
-      - "traefik.http.routers.noirbot-webhook.service=noirbot"
-      - "traefik.http.routers.noirbot-webhook.middlewares=noirbot-headers"
+      - "traefik.http.routers.telegrambot-webhook.rule=Host(`${BOT_DOMAIN}`) && PathPrefix(`/webhook`)"
+      - "traefik.http.routers.telegrambot-webhook.entrypoints=websecure"
+      - "traefik.http.routers.telegrambot-webhook.tls=true"
+      - "traefik.http.routers.telegrambot-webhook.tls.certresolver=le"
+      - "traefik.http.routers.telegrambot-webhook.priority=100"
+      - "traefik.http.routers.telegrambot-webhook.service=telegrambot"
+      - "traefik.http.routers.telegrambot-webhook.middlewares=telegrambot-headers"
 
-      - "traefik.http.routers.noirbot-health.rule=Host(`${BOT_DOMAIN}`) && Path(`/healthz`)"
-      - "traefik.http.routers.noirbot-health.entrypoints=websecure"
-      - "traefik.http.routers.noirbot-health.tls=true"
-      - "traefik.http.routers.noirbot-health.tls.certresolver=myresolver"
-      - "traefik.http.routers.noirbot-health.priority=90"
-      - "traefik.http.routers.noirbot-health.service=noirbot"
+      - "traefik.http.routers.telegrambot-health.rule=Host(`${BOT_DOMAIN}`) && Path(`/healthz`)"
+      - "traefik.http.routers.telegrambot-health.entrypoints=websecure"
+      - "traefik.http.routers.telegrambot-health.tls=true"
+      - "traefik.http.routers.telegrambot-health.tls.certresolver=le"
+      - "traefik.http.routers.telegrambot-health.priority=90"
+      - "traefik.http.routers.telegrambot-health.service=telegrambot"
 
 networks:
-  traefik-network:
+  proxy:
     external: true
-    name: telegram-n8n-bot_traefik-network
+    name: proxy
