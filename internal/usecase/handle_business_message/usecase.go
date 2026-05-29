@@ -89,9 +89,9 @@ func (uc *Usecase) Execute(ctx context.Context, msg model.IncomingMessage) error
 		GuestID:              msg.GuestID,
 	}
 
-	if err := uc.sender.ShowThinking(ctx, replyTarget); err != nil {
+	if shThErr := uc.sender.ShowThinking(ctx, replyTarget); shThErr != nil {
 		uc.log.WarnContext(ctx, "show thinking failed",
-			slog.String("error", err.Error()),
+			slog.String("error", shThErr.Error()),
 		)
 	}
 
