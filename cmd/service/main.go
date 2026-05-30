@@ -29,6 +29,7 @@ func main() {
 
 			newGreetingDetector,
 			newFloodDetector,
+			newShortVoiceDetector,
 
 			newOwnerWhitelist,
 			newBusinessConnectionStore,
@@ -100,6 +101,12 @@ func newFloodDetector(cfg *config.Config, store repository.MessageWindowStore) *
 	}, store)
 }
 
+func newShortVoiceDetector(cfg *config.Config) *service.ShortVoiceDetector {
+	return service.NewShortVoiceDetector(service.ShortVoiceDetectorConfig{
+		MaxDuration: cfg.ShortVoice.MaxDuration,
+	})
+}
+
 func newOwnerWhitelist(cfg *config.Config) repository.OwnerWhitelist {
 	return memory.NewOwnerWhitelist(cfg.AllowedOwners)
 }
@@ -135,6 +142,7 @@ func newLLMClient(c deepseek.Config) repository.LLMClient {
 
 func newHandleBusinessMessageConfig(cfg *config.Config) handle_business_message.Config {
 	return handle_business_message.Config{
-		SystemPrompt: cfg.Bot.SystemPrompt,
+		SystemPrompt:     cfg.Bot.SystemPrompt,
+		ShortVoicePrompt: cfg.Bot.ShortVoicePrompt,
 	}
 }

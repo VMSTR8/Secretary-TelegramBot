@@ -13,8 +13,9 @@ type Config struct {
 	DeepSeek      DeepSeekConfig
 	Bot           BotConfig
 	Flood         FloodConfig
-	Greetings     []string `default:"привет,прив,здоров,хай,ку"                      envconfig:"GREETINGS"`
-	AllowedOwners []int64  `envconfig:"ALLOWED_OWNERS"`
+	Greetings     []string `default:"привет,прив,здоров,хай,ку" envconfig:"GREETINGS"`
+	ShortVoice    ShortVoiceConfig
+	AllowedOwners []int64 `envconfig:"ALLOWED_OWNERS"`
 }
 
 type TelegramConfig struct {
@@ -37,13 +38,18 @@ type DeepSeekConfig struct {
 }
 
 type BotConfig struct {
-	SystemPrompt string `envconfig:"BOT_SYSTEM_PROMPT" required:"true"`
+	SystemPrompt     string `envconfig:"BOT_SYSTEM_PROMPT"      required:"true"`
+	ShortVoicePrompt string `envconfig:"BOT_SHORT_VOICE_PROMPT" required:"true"`
 }
 
 type FloodConfig struct {
 	WindowDuration time.Duration `default:"60s" envconfig:"FLOOD_WINDOW"`
 	MaxLen         int           `default:"20"  envconfig:"FLOOD_MAX_LEN"`
 	Threshold      int           `default:"5"   envconfig:"FLOOD_THRESHOLD"`
+}
+
+type ShortVoiceConfig struct {
+	MaxDuration time.Duration `default:"10s" envconfig:"SHORT_VOICE_MAX_DURATION"`
 }
 
 func Load() (*Config, error) {
