@@ -10,19 +10,26 @@ import (
 )
 
 type Config struct {
-	SystemPrompt string
+	SystemPrompt     string
+	ShortVoicePrompt string
 }
 
 type Usecase struct {
-	cfg              Config
-	whitelist        repository.OwnerWhitelist
-	connStore        repository.BusinessConnectionStore
-	accountReader    repository.BusinessAccountReader
-	greetingDetector *service.GreetingDetector
-	floodDetector    *service.FloodDetector
-	llm              repository.LLMClient
-	sender           repository.BusinessSender
-	log              *slog.Logger
+	cfg                Config
+	whitelist          repository.OwnerWhitelist
+	connStore          repository.BusinessConnectionStore
+	accountReader      repository.BusinessAccountReader
+	greetingDetector   *service.GreetingDetector
+	floodDetector      *service.FloodDetector
+	shortVoiceDetector *service.ShortVoiceDetector
+	llm                repository.LLMClient
+	sender             repository.BusinessSender
+	log                *slog.Logger
+}
+
+type llmInput struct {
+	SystemPrompt string
+	UserText     string
 }
 
 func New(
@@ -32,20 +39,22 @@ func New(
 	accountReader repository.BusinessAccountReader,
 	greetingDetector *service.GreetingDetector,
 	floodDetector *service.FloodDetector,
+	shortVoiceDetector *service.ShortVoiceDetector,
 	llm repository.LLMClient,
 	sender repository.BusinessSender,
 	log *slog.Logger,
 ) *Usecase {
 	return &Usecase{
-		cfg:              cfg,
-		whitelist:        whitelist,
-		connStore:        connStore,
-		accountReader:    accountReader,
-		greetingDetector: greetingDetector,
-		floodDetector:    floodDetector,
-		llm:              llm,
-		sender:           sender,
-		log:              log.With("usecase", "handle_business_message"),
+		cfg:                cfg,
+		whitelist:          whitelist,
+		connStore:          connStore,
+		accountReader:      accountReader,
+		greetingDetector:   greetingDetector,
+		floodDetector:      floodDetector,
+		shortVoiceDetector: shortVoiceDetector,
+		llm:                llm,
+		sender:             sender,
+		log:                log.With("usecase", "handle_business_message"),
 	}
 }
 
@@ -95,7 +104,9 @@ func (uc *Usecase) Execute(ctx context.Context, msg model.IncomingMessage) error
 		)
 	}
 
-	reply, err := uc.llm.Generate(ctx, uc.cfg.SystemPrompt, msg.Text)
+	in := uc.llmInputs(msg)
+
+	reply, err := uc.llm.Generate(ctx, in.SystemPrompt, in.UserText)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrLLMGenerate, err)
 	}
@@ -135,9 +146,24 @@ func (uc *Usecase) resolveOwner(ctx context.Context, connectionID string) (model
 }
 
 func (uc *Usecase) classify(ctx context.Context, msg model.IncomingMessage) (model.TriggerDecision, error) {
-	if decision := uc.greetingDetector.Detect(msg); decision.ShouldReply() {
-		return decision, nil
+	switch msg.Kind {
+	case model.MessageKindVoice:
+		return uc.shortVoiceDetector.Detect(msg), nil
+	case model.MessageKindText:
+		if decision := uc.greetingDetector.Detect(msg); decision.ShouldReply() {
+			return decision, nil
+		}
+
+		return uc.floodDetector.Detect(ctx, msg)
+	default:
+		return model.TriggerDecision{Kind: model.TriggerKindNone}, nil
+	}
+}
+
+func (uc *Usecase) llmInputs(msg model.IncomingMessage) llmInput {
+	if msg.Kind == model.MessageKindVoice {
+		return llmInput{SystemPrompt: uc.cfg.ShortVoicePrompt, UserText: ""}
 	}
 
-	return uc.floodDetector.Detect(ctx, msg)
+	return llmInput{SystemPrompt: uc.cfg.SystemPrompt, UserText: msg.Text}
 }

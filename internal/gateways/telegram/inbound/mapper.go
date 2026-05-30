@@ -14,16 +14,30 @@ func NewUpdateMapper() *UpdateMapper {
 }
 
 func (m *UpdateMapper) ToIncomingMessage(src *tgmodels.Message) (model.IncomingMessage, bool) {
-	if src == nil || src.From == nil || src.Text == "" {
+	if src == nil || src.From == nil {
 		return model.IncomingMessage{}, false
 	}
 
-	return model.IncomingMessage{
+	base := model.IncomingMessage{
 		BusinessConnectionID: src.BusinessConnectionID,
 		GuestID:              src.From.ID,
-		Text:                 src.Text,
-		ReceivedAt:           time.Unix(int64(src.Date), 0),
-	}, true
+		ReceivedAt:           time.Now().UTC(),
+	}
+
+	switch {
+	case src.Text != "":
+		base.Kind = model.MessageKindText
+		base.Text = src.Text
+
+		return base, true
+	case src.Voice != nil:
+		base.Kind = model.MessageKindVoice
+		base.VoiceDuration = time.Duration(src.Voice.Duration) * time.Second
+
+		return base, true
+	default:
+		return model.IncomingMessage{}, false
+	}
 }
 
 func (m *UpdateMapper) ToBusinessConnection(src *tgmodels.BusinessConnection) model.BusinessConnection {
