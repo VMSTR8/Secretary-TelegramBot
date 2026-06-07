@@ -20,6 +20,8 @@ type MessageWindowStore struct {
 	windows map[windowKey][]time.Time
 }
 
+// Deprecated: message windows live in Redis now. Use
+// redis.NewMessageWindowStore instead. Kept as a local-dev fallback.
 func NewMessageWindowStore() *MessageWindowStore {
 	return &MessageWindowStore{
 		windows: make(map[windowKey][]time.Time),

@@ -21,6 +21,7 @@ func toBusinessConnectionDTO(c model.BusinessConnection) businessConnectionDTO {
 	return businessConnectionDTO{
 		ID:          c.ID,
 		Owner:       ownerDTO{UserID: c.Owner.UserID},
+		UserChatID:  c.UserChatID,
 		IsEnabled:   c.IsEnabled,
 		CanReply:    c.CanReply,
 		ConnectedAt: c.ConnectedAt,
@@ -31,6 +32,7 @@ func fromBusinessConnectionDTO(dto businessConnectionDTO) model.BusinessConnecti
 	return model.BusinessConnection{
 		ID:          dto.ID,
 		Owner:       model.Owner{UserID: dto.Owner.UserID},
+		UserChatID:  dto.UserChatID,
 		IsEnabled:   dto.IsEnabled,
 		CanReply:    dto.CanReply,
 		ConnectedAt: dto.ConnectedAt,

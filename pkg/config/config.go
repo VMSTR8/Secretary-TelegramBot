@@ -55,9 +55,10 @@ type BotConfig struct {
 }
 
 type FloodConfig struct {
-	WindowDuration time.Duration `default:"60s" envconfig:"FLOOD_WINDOW"`
-	MaxLen         int           `default:"20"  envconfig:"FLOOD_MAX_LEN"`
-	Threshold      int           `default:"5"   envconfig:"FLOOD_THRESHOLD"`
+	WindowDuration time.Duration `default:"60s"  envconfig:"FLOOD_WINDOW"`
+	MaxLen         int           `default:"20"   envconfig:"FLOOD_MAX_LEN"`
+	Threshold      int           `default:"5"    envconfig:"FLOOD_THRESHOLD"`
+	RedisTTL       time.Duration `default:"120s" envconfig:"FLOOD_REDIS_TTL"`
 }
 
 type ShortVoiceConfig struct {
@@ -70,5 +71,21 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
 
+	if err := cfg.validate(); err != nil {
+		return nil, fmt.Errorf("validate config: %w", err)
+	}
+
 	return cfg, nil
+}
+
+func (c *Config) validate() error {
+	if c.Flood.RedisTTL < c.Flood.WindowDuration {
+		return fmt.Errorf("%w: ttl=%s, window=%s",
+			ErrInvalidFloodTTL,
+			c.Flood.RedisTTL,
+			c.Flood.WindowDuration,
+		)
+	}
+
+	return nil
 }

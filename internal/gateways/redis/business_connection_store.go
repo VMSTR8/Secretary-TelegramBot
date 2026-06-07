@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"noirbot/internal/domain/model"
 	"noirbot/internal/domain/repository"
-	"noirbot/pkg/config"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -17,14 +17,14 @@ const bcKeyPrefix = "bc:"
 var _ repository.BusinessConnectionStore = (*BusinessConnectionStore)(nil)
 
 type BusinessConnectionStore struct {
-	cfg    *config.Config
 	client *redis.Client
+	ttl    time.Duration
 }
 
-func NewBusinessConnectionStore(cfg *config.Config, client *redis.Client) *BusinessConnectionStore {
+func NewBusinessConnectionStore(client *redis.Client, ttl time.Duration) *BusinessConnectionStore {
 	return &BusinessConnectionStore{
-		cfg:    cfg,
 		client: client,
+		ttl:    ttl,
 	}
 }
 
@@ -63,9 +63,7 @@ func (s *BusinessConnectionStore) Put(ctx context.Context, conn model.BusinessCo
 		return fmt.Errorf("redis marshal business_connection %s: %w", conn.ID, err)
 	}
 
-	expr := s.cfg.Redis.BusinessConnectionTTL
-
-	if setErr := s.client.Set(ctx, key, data, expr).Err(); setErr != nil {
+	if setErr := s.client.Set(ctx, key, data, s.ttl).Err(); setErr != nil {
 		return fmt.Errorf("redis set business_connection %s: %w", conn.ID, setErr)
 	}
 

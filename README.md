@@ -48,8 +48,7 @@ The bot reacts to a single greeting or to flooding within a defined interval win
 - Go 1.26.3
 - [Golang Telegram Bot](https://github.com/go-telegram/bot)
 - [DeepSeek API](https://platform.deepseek.com/)
-
-Redis or some tiny DB like SQLite is on the TODO list, in case the bot needs to grow.
+- [Redis](https://redis.io/)
 
 ## How to deploy on your own VDS
 

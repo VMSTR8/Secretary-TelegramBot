@@ -135,11 +135,11 @@ func newOwnerWhitelist(cfg *config.Config) repository.OwnerWhitelist {
 }
 
 func newBusinessConnectionStore(r *redis.Client, cfg *config.Config) repository.BusinessConnectionStore {
-	return redisstore.NewBusinessConnectionStore(cfg, r)
+	return redisstore.NewBusinessConnectionStore(r, cfg.Redis.BusinessConnectionTTL)
 }
 
-func newMessageWindowStore() repository.MessageWindowStore {
-	return memory.NewMessageWindowStore()
+func newMessageWindowStore(r *redis.Client, cfg *config.Config) repository.MessageWindowStore {
+	return redisstore.NewMessageWindowStore(r, cfg.Flood.WindowDuration, cfg.Flood.RedisTTL)
 }
 
 func newBusinessSender(b *bot.Bot) repository.BusinessSender {
