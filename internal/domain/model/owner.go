@@ -3,14 +3,14 @@ package model
 import "time"
 
 type Owner struct {
-	UserID int64
+	UserID int64 `json:"userId"`
 }
 
 type BusinessConnection struct {
-	ID          string
-	Owner       Owner
-	UserChatID  int64
-	IsEnabled   bool
-	CanReply    bool
-	ConnectedAt time.Time
+	ID          string    `json:"id"`
+	Owner       Owner     `json:"owner"`
+	UserChatID  int64     `json:"userChatId"`
+	IsEnabled   bool      `json:"isEnabled"`
+	CanReply    bool      `json:"canReply"`
+	ConnectedAt time.Time `json:"connectedAt"`
 }

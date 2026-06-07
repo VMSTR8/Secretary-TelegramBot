@@ -33,7 +33,24 @@ services:
       - "traefik.http.routers.noirbot-health.priority=90"
       - "traefik.http.routers.noirbot-health.service=noirbot"
 
+  redis:
+    image: redis:7-alpine
+    container_name: noirBot-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+
+    networks:
+      - bot-internal
+
 networks:
   traefik-network:
     external: true
     name: telegram-n8n-bot_traefik-network
+
+  bot-internal:
+    driver: bridge
+
+volumes:
+  redis-data:

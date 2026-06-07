@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"noirbot/internal/domain/repository"
 	"noirbot/internal/domain/service"
 	"noirbot/internal/gateways/deepseek"
 	"noirbot/internal/gateways/memory"
+	redismemory "noirbot/internal/gateways/redis"
 	"noirbot/internal/gateways/telegram/inbound"
 	"noirbot/internal/gateways/telegram/outbound"
 	"noirbot/internal/usecase/handle_business_connection"
@@ -17,6 +19,7 @@ import (
 	httpgw "noirbot/internal/gateways/http"
 
 	"github.com/go-telegram/bot"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/fx"
 )
 
@@ -41,6 +44,8 @@ func main() {
 			newDeepseekConfig,
 			newLLMClient,
 
+			newRedisClient,
+
 			newHandleBusinessMessageConfig,
 			handle_business_connection.New,
 			handle_business_message.New,
@@ -57,6 +62,7 @@ func main() {
 			wireLazyHandler,
 			httpgw.RegisterRoutes,
 			bindHTTPServerLifecycle,
+			bindRedisLifecycle,
 		),
 	)
 
@@ -71,6 +77,14 @@ func bindHTTPServerLifecycle(lc fx.Lifecycle, s *httpgw.Server) {
 	lc.Append(fx.Hook{
 		OnStart: s.Start,
 		OnStop:  s.Stop,
+	})
+}
+
+func bindRedisLifecycle(lc fx.Lifecycle, r *redis.Client) {
+	lc.Append(fx.Hook{
+		OnStop: func(_ context.Context) error {
+			return r.Close()
+		},
 	})
 }
 
@@ -111,8 +125,8 @@ func newOwnerWhitelist(cfg *config.Config) repository.OwnerWhitelist {
 	return memory.NewOwnerWhitelist(cfg.AllowedOwners)
 }
 
-func newBusinessConnectionStore() repository.BusinessConnectionStore {
-	return memory.NewBusinessConnectionStore()
+func newBusinessConnectionStore(r *redis.Client) repository.BusinessConnectionStore {
+	return redismemory.NewBusinessConnectionStore(r)
 }
 
 func newMessageWindowStore() repository.MessageWindowStore {
@@ -145,4 +159,18 @@ func newHandleBusinessMessageConfig(cfg *config.Config) handle_business_message.
 		SystemPrompt:     cfg.Bot.SystemPrompt,
 		ShortVoicePrompt: cfg.Bot.ShortVoicePrompt,
 	}
+}
+
+func newRedisClient(cfg *config.Config) *redis.Client {
+	rdb := redis.NewClient(&redis.Options{
+		Addr:         cfg.Redis.Addr,
+		Password:     cfg.Redis.Password,
+		DB:           cfg.Redis.DB,
+		DialTimeout:  cfg.Redis.DialTimeout,
+		ReadTimeout:  cfg.Redis.ReadTimeout,
+		WriteTimeout: cfg.Redis.WriteTimeout,
+		PoolSize:     cfg.Redis.PoolSize,
+	})
+
+	return rdb
 }
