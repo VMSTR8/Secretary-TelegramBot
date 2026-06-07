@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"noirbot/internal/domain/model"
 	"noirbot/internal/domain/repository"
+	"noirbot/pkg/config"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -16,11 +17,13 @@ const bcKeyPrefix = "bc:"
 var _ repository.BusinessConnectionStore = (*BusinessConnectionStore)(nil)
 
 type BusinessConnectionStore struct {
+	cfg    *config.Config
 	client *redis.Client
 }
 
-func NewBusinessConnectionStore(client *redis.Client) *BusinessConnectionStore {
+func NewBusinessConnectionStore(cfg *config.Config, client *redis.Client) *BusinessConnectionStore {
 	return &BusinessConnectionStore{
+		cfg:    cfg,
 		client: client,
 	}
 }
@@ -37,15 +40,15 @@ func (s *BusinessConnectionStore) Get(
 	}
 
 	if err != nil {
-		return model.BusinessConnection{}, false, fmt.Errorf("redis get bc %s: %w", connectionID, err)
+		return model.BusinessConnection{}, false, fmt.Errorf("redis get business_connection %s: %w", connectionID, err)
 	}
 
-	var conn model.BusinessConnection
-	if unMshErr := json.Unmarshal([]byte(data), &conn); unMshErr != nil {
-		return model.BusinessConnection{}, false, fmt.Errorf("redis unmarshal bc %s: %w", connectionID, unMshErr)
+	var dto businessConnectionDTO
+	if unMshErr := json.Unmarshal([]byte(data), &dto); unMshErr != nil {
+		return model.BusinessConnection{}, false, fmt.Errorf("redis unmarshal business_connection %s: %w", connectionID, unMshErr)
 	}
 
-	return conn, true, nil
+	return fromBusinessConnectionDTO(dto), true, nil
 }
 
 func (s *BusinessConnectionStore) Put(ctx context.Context, conn model.BusinessConnection) error {
@@ -55,13 +58,15 @@ func (s *BusinessConnectionStore) Put(ctx context.Context, conn model.BusinessCo
 
 	key := bcKeyPrefix + conn.ID
 
-	data, err := json.Marshal(conn)
+	data, err := json.Marshal(toBusinessConnectionDTO(conn))
 	if err != nil {
-		return fmt.Errorf("redis marshal bc %s: %w", conn.ID, err)
+		return fmt.Errorf("redis marshal business_connection %s: %w", conn.ID, err)
 	}
 
-	if setErr := s.client.Set(ctx, key, data, 0).Err(); setErr != nil {
-		return fmt.Errorf("redis set bc %s: %w", conn.ID, setErr)
+	expr := s.cfg.Redis.BusinessConnectionTTL
+
+	if setErr := s.client.Set(ctx, key, data, expr).Err(); setErr != nil {
+		return fmt.Errorf("redis set business_connection %s: %w", conn.ID, setErr)
 	}
 
 	return nil
@@ -71,7 +76,7 @@ func (s *BusinessConnectionStore) Delete(ctx context.Context, connectionID strin
 	key := bcKeyPrefix + connectionID
 
 	if err := s.client.Del(ctx, key).Err(); err != nil {
-		return fmt.Errorf("redis del bc %s: %w", connectionID, err)
+		return fmt.Errorf("redis del business_connection %s: %w", connectionID, err)
 	}
 
 	return nil

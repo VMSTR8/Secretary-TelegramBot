@@ -7,16 +7,15 @@ import (
 	"noirbot/internal/domain/repository"
 	"noirbot/internal/domain/service"
 	"noirbot/internal/gateways/deepseek"
+	httpgw "noirbot/internal/gateways/http"
 	"noirbot/internal/gateways/memory"
-	redismemory "noirbot/internal/gateways/redis"
+	redisstore "noirbot/internal/gateways/redis"
 	"noirbot/internal/gateways/telegram/inbound"
 	"noirbot/internal/gateways/telegram/outbound"
 	"noirbot/internal/usecase/handle_business_connection"
 	"noirbot/internal/usecase/handle_business_message"
 	"noirbot/pkg/config"
 	"os"
-
-	httpgw "noirbot/internal/gateways/http"
 
 	"github.com/go-telegram/bot"
 	"github.com/redis/go-redis/v9"
@@ -61,8 +60,8 @@ func main() {
 		fx.Invoke(
 			wireLazyHandler,
 			httpgw.RegisterRoutes,
-			bindHTTPServerLifecycle,
 			bindRedisLifecycle,
+			bindHTTPServerLifecycle,
 		),
 	)
 
@@ -80,8 +79,18 @@ func bindHTTPServerLifecycle(lc fx.Lifecycle, s *httpgw.Server) {
 	})
 }
 
-func bindRedisLifecycle(lc fx.Lifecycle, r *redis.Client) {
+func bindRedisLifecycle(cfg *config.Config, lc fx.Lifecycle, r *redis.Client) {
 	lc.Append(fx.Hook{
+		OnStart: func(ctx context.Context) error {
+			pingCtx, cancel := context.WithTimeout(ctx, cfg.Redis.DialTimeout)
+			defer cancel()
+
+			if err := r.Ping(pingCtx).Err(); err != nil {
+				return fmt.Errorf("ping redis: %w", err)
+			}
+
+			return nil
+		},
 		OnStop: func(_ context.Context) error {
 			return r.Close()
 		},
@@ -125,8 +134,8 @@ func newOwnerWhitelist(cfg *config.Config) repository.OwnerWhitelist {
 	return memory.NewOwnerWhitelist(cfg.AllowedOwners)
 }
 
-func newBusinessConnectionStore(r *redis.Client) repository.BusinessConnectionStore {
-	return redismemory.NewBusinessConnectionStore(r)
+func newBusinessConnectionStore(r *redis.Client, cfg *config.Config) repository.BusinessConnectionStore {
+	return redisstore.NewBusinessConnectionStore(cfg, r)
 }
 
 func newMessageWindowStore() repository.MessageWindowStore {

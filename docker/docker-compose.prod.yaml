@@ -3,12 +3,17 @@ services:
   bot:
     image: ${BOT_IMAGE:?BOT_IMAGE is required}
     container_name: noirBot
+    depends_on:
+      redis:
+        condition: service_healthy
     restart: unless-stopped
     env_file:
       - .env
 
     networks:
       - traefik-network
+      - bot-internal
+
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=telegram-n8n-bot_traefik-network"
@@ -37,12 +42,19 @@ services:
     image: redis:7-alpine
     container_name: noirBot-redis
     restart: unless-stopped
-    command: redis-server --appendonly yes
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy noeviction
     volumes:
       - redis-data:/data
 
     networks:
       - bot-internal
+
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
 
 networks:
   traefik-network:

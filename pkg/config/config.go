@@ -32,13 +32,14 @@ type HTTPConfig struct {
 }
 
 type RedisConfig struct {
-	Addr         string        `default:"localhost:6379" envconfig:"REDIS_ADDR"`
-	Password     string        `default:""               envconfig:"REDIS_PASSWORD"`
-	DB           int           `default:"0"              envconfig:"REDIS_DB"`
-	DialTimeout  time.Duration `default:"5s"             envconfig:"REDIS_DIAL_TIMEOUT"`
-	ReadTimeout  time.Duration `default:"3s"             envconfig:"REDIS_READ_TIMEOUT"`
-	WriteTimeout time.Duration `default:"3s"             envconfig:"REDIS_WRITE_TIMEOUT"`
-	PoolSize     int           `default:"20"             envconfig:"REDIS_POOL_SIZE"`
+	Addr                  string        `default:"localhost:6379" envconfig:"REDIS_ADDR"`
+	Password              string        `default:""               envconfig:"REDIS_PASSWORD"`
+	DB                    int           `default:"0"              envconfig:"REDIS_DB"`
+	DialTimeout           time.Duration `default:"5s"             envconfig:"REDIS_DIAL_TIMEOUT"`
+	ReadTimeout           time.Duration `default:"3s"             envconfig:"REDIS_READ_TIMEOUT"`
+	WriteTimeout          time.Duration `default:"3s"             envconfig:"REDIS_WRITE_TIMEOUT"`
+	PoolSize              int           `default:"20"             envconfig:"REDIS_POOL_SIZE"`
+	BusinessConnectionTTL time.Duration `default:"604800s"        envconfig:"REDIS_BUSINESS_TTL"`
 }
 
 type DeepSeekConfig struct {
