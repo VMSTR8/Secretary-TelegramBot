@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"noirbot/internal/domain/repository"
 	"noirbot/internal/domain/service"
 	"noirbot/internal/gateways/deepseek"
+	httpgw "noirbot/internal/gateways/http"
 	"noirbot/internal/gateways/memory"
+	redisstore "noirbot/internal/gateways/redis"
 	"noirbot/internal/gateways/telegram/inbound"
 	"noirbot/internal/gateways/telegram/outbound"
 	"noirbot/internal/usecase/handle_business_connection"
@@ -14,9 +17,8 @@ import (
 	"noirbot/pkg/config"
 	"os"
 
-	httpgw "noirbot/internal/gateways/http"
-
 	"github.com/go-telegram/bot"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/fx"
 )
 
@@ -29,6 +31,7 @@ func main() {
 
 			newGreetingDetector,
 			newFloodDetector,
+			newShortVoiceDetector,
 
 			newOwnerWhitelist,
 			newBusinessConnectionStore,
@@ -39,6 +42,8 @@ func main() {
 
 			newDeepseekConfig,
 			newLLMClient,
+
+			newRedisClient,
 
 			newHandleBusinessMessageConfig,
 			handle_business_connection.New,
@@ -55,6 +60,7 @@ func main() {
 		fx.Invoke(
 			wireLazyHandler,
 			httpgw.RegisterRoutes,
+			bindRedisLifecycle,
 			bindHTTPServerLifecycle,
 		),
 	)
@@ -70,6 +76,24 @@ func bindHTTPServerLifecycle(lc fx.Lifecycle, s *httpgw.Server) {
 	lc.Append(fx.Hook{
 		OnStart: s.Start,
 		OnStop:  s.Stop,
+	})
+}
+
+func bindRedisLifecycle(cfg *config.Config, lc fx.Lifecycle, r *redis.Client) {
+	lc.Append(fx.Hook{
+		OnStart: func(ctx context.Context) error {
+			pingCtx, cancel := context.WithTimeout(ctx, cfg.Redis.DialTimeout)
+			defer cancel()
+
+			if err := r.Ping(pingCtx).Err(); err != nil {
+				return fmt.Errorf("ping redis: %w", err)
+			}
+
+			return nil
+		},
+		OnStop: func(_ context.Context) error {
+			return r.Close()
+		},
 	})
 }
 
@@ -100,16 +124,22 @@ func newFloodDetector(cfg *config.Config, store repository.MessageWindowStore) *
 	}, store)
 }
 
+func newShortVoiceDetector(cfg *config.Config) *service.ShortVoiceDetector {
+	return service.NewShortVoiceDetector(service.ShortVoiceDetectorConfig{
+		MaxDuration: cfg.ShortVoice.MaxDuration,
+	})
+}
+
 func newOwnerWhitelist(cfg *config.Config) repository.OwnerWhitelist {
 	return memory.NewOwnerWhitelist(cfg.AllowedOwners)
 }
 
-func newBusinessConnectionStore() repository.BusinessConnectionStore {
-	return memory.NewBusinessConnectionStore()
+func newBusinessConnectionStore(r *redis.Client, cfg *config.Config) repository.BusinessConnectionStore {
+	return redisstore.NewBusinessConnectionStore(r, cfg.Redis.BusinessConnectionTTL)
 }
 
-func newMessageWindowStore() repository.MessageWindowStore {
-	return memory.NewMessageWindowStore()
+func newMessageWindowStore(r *redis.Client, cfg *config.Config) repository.MessageWindowStore {
+	return redisstore.NewMessageWindowStore(r, cfg.Flood.WindowDuration, cfg.Flood.RedisTTL)
 }
 
 func newBusinessSender(b *bot.Bot) repository.BusinessSender {
@@ -135,6 +165,21 @@ func newLLMClient(c deepseek.Config) repository.LLMClient {
 
 func newHandleBusinessMessageConfig(cfg *config.Config) handle_business_message.Config {
 	return handle_business_message.Config{
-		SystemPrompt: cfg.Bot.SystemPrompt,
+		SystemPrompt:     cfg.Bot.SystemPrompt,
+		ShortVoicePrompt: cfg.Bot.ShortVoicePrompt,
 	}
+}
+
+func newRedisClient(cfg *config.Config) *redis.Client {
+	rdb := redis.NewClient(&redis.Options{
+		Addr:         cfg.Redis.Addr,
+		Password:     cfg.Redis.Password,
+		DB:           cfg.Redis.DB,
+		DialTimeout:  cfg.Redis.DialTimeout,
+		ReadTimeout:  cfg.Redis.ReadTimeout,
+		WriteTimeout: cfg.Redis.WriteTimeout,
+		PoolSize:     cfg.Redis.PoolSize,
+	})
+
+	return rdb
 }

@@ -10,11 +10,13 @@ import (
 type Config struct {
 	Telegram      TelegramConfig
 	HTTP          HTTPConfig
+	Redis         RedisConfig
 	DeepSeek      DeepSeekConfig
 	Bot           BotConfig
 	Flood         FloodConfig
-	Greetings     []string `default:"привет,прив,здоров,хай,ку"                      envconfig:"GREETINGS"`
-	AllowedOwners []int64  `envconfig:"ALLOWED_OWNERS"`
+	Greetings     []string `default:"привет,прив,здоров,хай,ку" envconfig:"GREETINGS"`
+	ShortVoice    ShortVoiceConfig
+	AllowedOwners []int64 `envconfig:"ALLOWED_OWNERS"`
 }
 
 type TelegramConfig struct {
@@ -29,6 +31,17 @@ type HTTPConfig struct {
 	ShutdownTimeout time.Duration `default:"5s"    envconfig:"HTTP_SHUTDOWN_TIMEOUT"`
 }
 
+type RedisConfig struct {
+	Addr                  string        `default:"localhost:6379" envconfig:"REDIS_ADDR"`
+	Password              string        `default:""               envconfig:"REDIS_PASSWORD"`
+	DB                    int           `default:"0"              envconfig:"REDIS_DB"`
+	DialTimeout           time.Duration `default:"5s"             envconfig:"REDIS_DIAL_TIMEOUT"`
+	ReadTimeout           time.Duration `default:"3s"             envconfig:"REDIS_READ_TIMEOUT"`
+	WriteTimeout          time.Duration `default:"3s"             envconfig:"REDIS_WRITE_TIMEOUT"`
+	PoolSize              int           `default:"20"             envconfig:"REDIS_POOL_SIZE"`
+	BusinessConnectionTTL time.Duration `default:"604800s"        envconfig:"REDIS_BUSINESS_TTL"`
+}
+
 type DeepSeekConfig struct {
 	BaseURL string        `default:"https://api.deepseek.com/v1" envconfig:"DEEPSEEK_BASE_URL"`
 	APIKey  string        `envconfig:"DEEPSEEK_API_KEY"          required:"true"`
@@ -37,13 +50,19 @@ type DeepSeekConfig struct {
 }
 
 type BotConfig struct {
-	SystemPrompt string `envconfig:"BOT_SYSTEM_PROMPT" required:"true"`
+	SystemPrompt     string `envconfig:"BOT_SYSTEM_PROMPT"      required:"true"`
+	ShortVoicePrompt string `envconfig:"BOT_SHORT_VOICE_PROMPT" required:"true"`
 }
 
 type FloodConfig struct {
-	WindowDuration time.Duration `default:"60s" envconfig:"FLOOD_WINDOW"`
-	MaxLen         int           `default:"20"  envconfig:"FLOOD_MAX_LEN"`
-	Threshold      int           `default:"5"   envconfig:"FLOOD_THRESHOLD"`
+	WindowDuration time.Duration `default:"60s"  envconfig:"FLOOD_WINDOW"`
+	MaxLen         int           `default:"20"   envconfig:"FLOOD_MAX_LEN"`
+	Threshold      int           `default:"5"    envconfig:"FLOOD_THRESHOLD"`
+	RedisTTL       time.Duration `default:"120s" envconfig:"FLOOD_REDIS_TTL"`
+}
+
+type ShortVoiceConfig struct {
+	MaxDuration time.Duration `default:"10s" envconfig:"SHORT_VOICE_MAX_DURATION"`
 }
 
 func Load() (*Config, error) {
@@ -52,5 +71,21 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
 
+	if err := cfg.validate(); err != nil {
+		return nil, fmt.Errorf("validate config: %w", err)
+	}
+
 	return cfg, nil
+}
+
+func (c *Config) validate() error {
+	if c.Flood.RedisTTL < c.Flood.WindowDuration {
+		return fmt.Errorf("%w: ttl=%s, window=%s",
+			ErrInvalidFloodTTL,
+			c.Flood.RedisTTL,
+			c.Flood.WindowDuration,
+		)
+	}
+
+	return nil
 }

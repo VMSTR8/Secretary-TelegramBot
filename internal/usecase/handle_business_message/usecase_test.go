@@ -30,11 +30,20 @@ var (
 	testMsg = model.IncomingMessage{
 		BusinessConnectionID: "conn-1",
 		GuestID:              999,
+		Kind:                 model.MessageKindText,
 		Text:                 "привет",
 		ReceivedAt:           time.Now(),
 	}
-	testReply    = "Ну какой привет, пиши сразу, что тебе надо!"
-	systemPrompt = "Отвечай как нуарный детектив, повидавший некоторое дерьмо"
+	testVoiceMsg = model.IncomingMessage{
+		BusinessConnectionID: "conn-1",
+		GuestID:              999,
+		Kind:                 model.MessageKindVoice,
+		VoiceDuration:        5 * time.Second,
+		ReceivedAt:           time.Now(),
+	}
+	testReply        = "Ну какой привет, пиши сразу, что тебе надо!"
+	systemPrompt     = "Отвечай как нуарный детектив, повидавший некоторое дерьмо"
+	shortVoicePrompt = "Тебе пришло голосовое — отреагируй нуарно"
 )
 
 func expectShowThinking(ctx context.Context, sender *mock.MockBusinessSender, msg model.IncomingMessage) {
@@ -69,13 +78,21 @@ func newUsecase(
 		Threshold:      5,
 	}, windowStore)
 
+	shortVoice := service.NewShortVoiceDetector(service.ShortVoiceDetectorConfig{
+		MaxDuration: 10 * time.Second,
+	})
+
 	return New(
-		Config{SystemPrompt: systemPrompt},
+		Config{
+			SystemPrompt:     systemPrompt,
+			ShortVoicePrompt: shortVoicePrompt,
+		},
 		whitelist,
 		connStore,
 		accountReader,
 		greeting,
 		flood,
+		shortVoice,
 		llm,
 		sender,
 		slog.Default(),
@@ -149,6 +166,7 @@ func TestUsecase_Execute(t *testing.T) {
 			msg: model.IncomingMessage{
 				BusinessConnectionID: "conn-1",
 				GuestID:              999,
+				Kind:                 model.MessageKindText,
 				Text:                 "это очень длинное сообщение которое точно больше двадцати символов",
 				ReceivedAt:           time.Now(),
 			},
@@ -257,6 +275,53 @@ func TestUsecase_Execute(t *testing.T) {
 				return newUsecase(t, whitelist, connStore, accountReader, llm, sender)
 			},
 			msg:     testMsg,
+			wantErr: nil,
+		},
+		{
+			name: "short voice ≤ порога — LLM вызван с short voice prompt и пустым userText",
+			setup: func(ctrl *gomock.Controller) *Usecase {
+				whitelist := mock.NewMockOwnerWhitelist(ctrl)
+				connStore := mock.NewMockBusinessConnectionStore(ctrl)
+				accountReader := mock.NewMockBusinessAccountReader(ctrl)
+				llm := mock.NewMockLLMClient(ctrl)
+				sender := mock.NewMockBusinessSender(ctrl)
+
+				connStore.EXPECT().Get(ctx, testConn.ID).Return(testConn, true, nil)
+				whitelist.EXPECT().IsAllowed(ctx, testConn.Owner.UserID).Return(true, nil)
+				expectShowThinking(ctx, sender, testVoiceMsg)
+				llm.EXPECT().Generate(ctx, shortVoicePrompt, "").Return(testReply, nil)
+				sender.EXPECT().Send(ctx, model.ReplyDraft{
+					BusinessConnectionID: testVoiceMsg.BusinessConnectionID,
+					GuestID:              testVoiceMsg.GuestID,
+					Text:                 testReply,
+				}).Return(nil)
+
+				return newUsecase(t, whitelist, connStore, accountReader, llm, sender)
+			},
+			msg:     testVoiceMsg,
+			wantErr: nil,
+		},
+		{
+			name: "long voice > порога — бот молчит, LLM не вызывается",
+			setup: func(ctrl *gomock.Controller) *Usecase {
+				whitelist := mock.NewMockOwnerWhitelist(ctrl)
+				connStore := mock.NewMockBusinessConnectionStore(ctrl)
+				accountReader := mock.NewMockBusinessAccountReader(ctrl)
+				llm := mock.NewMockLLMClient(ctrl)
+				sender := mock.NewMockBusinessSender(ctrl)
+
+				connStore.EXPECT().Get(ctx, testConn.ID).Return(testConn, true, nil)
+				whitelist.EXPECT().IsAllowed(ctx, testConn.Owner.UserID).Return(true, nil)
+
+				return newUsecase(t, whitelist, connStore, accountReader, llm, sender)
+			},
+			msg: model.IncomingMessage{
+				BusinessConnectionID: "conn-1",
+				GuestID:              999,
+				Kind:                 model.MessageKindVoice,
+				VoiceDuration:        30 * time.Second,
+				ReceivedAt:           time.Now(),
+			},
 			wantErr: nil,
 		},
 	}

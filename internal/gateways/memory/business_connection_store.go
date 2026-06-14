@@ -14,6 +14,8 @@ type BusinessConnectionStore struct {
 	conns map[string]model.BusinessConnection
 }
 
+// Deprecated: business connection live in Redis now. Use
+// redis.NewBusinessConnectionStore instead. Kept as a local-dev fallback.
 func NewBusinessConnectionStore() *BusinessConnectionStore {
 	return &BusinessConnectionStore{
 		conns: make(map[string]model.BusinessConnection),

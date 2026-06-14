@@ -3,9 +3,10 @@ package model
 type TriggerKind string
 
 const (
-	TriggerKindNone     TriggerKind = "none"
-	TriggerKindGreeting TriggerKind = "greeting"
-	TriggerKindFlood    TriggerKind = "flood"
+	TriggerKindNone       TriggerKind = "none"
+	TriggerKindGreeting   TriggerKind = "greeting"
+	TriggerKindFlood      TriggerKind = "flood"
+	TriggerKindShortVoice TriggerKind = "short_voice"
 )
 
 type TriggerDecision struct {

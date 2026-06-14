@@ -47,8 +47,7 @@ Telegram открыл возможность установить бота-се�
 - Go 1.26.3
 - [Golang Telegram Bot](https://github.com/go-telegram/bot)
 - [DeepSeek API](https://platform.deepseek.com/)
-
-В TODO занесен Redis или какая-то простенькая базка типа SQLite, если потребуется расширение бота.
+- [Redis](https://redis.io/)
 
 ## Как поднять у себя на VDS
 
