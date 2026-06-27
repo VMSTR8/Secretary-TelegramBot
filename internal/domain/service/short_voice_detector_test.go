@@ -12,6 +12,10 @@ import (
 func TestShortVoiceDetector_Detect(t *testing.T) {
 	const maxDuration = 10 * time.Second
 
+	detector := service.NewShortVoiceDetector(service.ShortVoiceDetectorConfig{
+		MaxDuration: maxDuration,
+	})
+
 	tests := []struct {
 		name     string
 		msg      model.IncomingMessage
@@ -26,7 +30,7 @@ func TestShortVoiceDetector_Detect(t *testing.T) {
 			wantKind: model.TriggerKindShortVoice,
 		},
 		{
-			name: "voice ровно на пороге — триггер (граничный случай)",
+			name: "voice ровно на пороге — триггер short_voice",
 			msg: model.IncomingMessage{
 				Kind:          model.MessageKindVoice,
 				VoiceDuration: maxDuration,
@@ -34,7 +38,7 @@ func TestShortVoiceDetector_Detect(t *testing.T) {
 			wantKind: model.TriggerKindShortVoice,
 		},
 		{
-			name: "voice длиннее порога — пропускаем",
+			name: "voice длиннее порога — без триггера",
 			msg: model.IncomingMessage{
 				Kind:          model.MessageKindVoice,
 				VoiceDuration: 30 * time.Second,
@@ -42,7 +46,7 @@ func TestShortVoiceDetector_Detect(t *testing.T) {
 			wantKind: model.TriggerKindNone,
 		},
 		{
-			name: "текстовое сообщение — детектор не реагирует",
+			name: "текстовое сообщение — без триггера",
 			msg: model.IncomingMessage{
 				Kind: model.MessageKindText,
 				Text: "привет",
@@ -50,15 +54,11 @@ func TestShortVoiceDetector_Detect(t *testing.T) {
 			wantKind: model.TriggerKindNone,
 		},
 		{
-			name:     "пустой Kind — детектор не реагирует",
+			name:     "пустой Kind — без триггера",
 			msg:      model.IncomingMessage{},
 			wantKind: model.TriggerKindNone,
 		},
 	}
-
-	detector := service.NewShortVoiceDetector(service.ShortVoiceDetectorConfig{
-		MaxDuration: maxDuration,
-	})
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

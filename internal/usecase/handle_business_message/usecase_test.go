@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"noirbot/internal/domain/model"
+	"noirbot/internal/domain/repository"
 	"noirbot/internal/domain/repository/mock"
 	"noirbot/internal/domain/service"
 	"testing"
@@ -18,6 +19,7 @@ var (
 	errDeepseekTimeoutStub   = errors.New("deepseek timeout")
 	errTelegramRateLimitStub = errors.New("telegram 429")
 	errTelegramDraftStub     = errors.New("telegram draft unavailable")
+	errRedisRefusedStub      = errors.New("redis connection refused")
 )
 
 var (
@@ -44,6 +46,8 @@ var (
 	testReply        = "Ну какой привет, пиши сразу, что тебе надо!"
 	systemPrompt     = "Отвечай как нуарный детектив, повидавший некоторое дерьмо"
 	shortVoicePrompt = "Тебе пришло голосовое — отреагируй нуарно"
+
+	responseWindow = 60 * time.Second
 )
 
 func expectShowThinking(ctx context.Context, sender *mock.MockBusinessSender, msg model.IncomingMessage) {
@@ -53,6 +57,42 @@ func expectShowThinking(ctx context.Context, sender *mock.MockBusinessSender, ms
 	}).Return(nil)
 }
 
+// mockVoiceCooldown returns a mock VoiceReplyWindowStore that expects
+// TryEnter to NOT be called. Use for non-voice test cases.
+func mockVoiceCooldown(ctrl *gomock.Controller) repository.VoiceReplyWindowStore {
+	return mock.NewMockVoiceReplyWindowStore(ctrl)
+}
+
+// mockVoiceCooldownAcquired returns a mock that expects TryEnter → (true, nil).
+func mockVoiceCooldownAcquired(ctrl *gomock.Controller) repository.VoiceReplyWindowStore {
+	store := mock.NewMockVoiceReplyWindowStore(ctrl)
+	store.EXPECT().
+		TryEnter(gomock.Any(), "conn-1", int64(999), responseWindow).
+		Return(true, nil)
+
+	return store
+}
+
+// mockVoiceCooldownBlocked returns a mock that expects TryEnter → (false, nil).
+func mockVoiceCooldownBlocked(ctrl *gomock.Controller) repository.VoiceReplyWindowStore {
+	store := mock.NewMockVoiceReplyWindowStore(ctrl)
+	store.EXPECT().
+		TryEnter(gomock.Any(), "conn-1", int64(999), responseWindow).
+		Return(false, nil)
+
+	return store
+}
+
+// mockVoiceCooldownError returns a mock that expects TryEnter → error.
+func mockVoiceCooldownError(ctrl *gomock.Controller) repository.VoiceReplyWindowStore {
+	store := mock.NewMockVoiceReplyWindowStore(ctrl)
+	store.EXPECT().
+		TryEnter(gomock.Any(), "conn-1", int64(999), responseWindow).
+		Return(false, errRedisRefusedStub)
+
+	return store
+}
+
 func newUsecase(
 	t *testing.T,
 	whitelist *mock.MockOwnerWhitelist,
@@ -60,6 +100,7 @@ func newUsecase(
 	accountReader *mock.MockBusinessAccountReader,
 	llm *mock.MockLLMClient,
 	sender *mock.MockBusinessSender,
+	voiceCooldown repository.VoiceReplyWindowStore,
 ) *Usecase {
 	t.Helper()
 
@@ -84,8 +125,9 @@ func newUsecase(
 
 	return New(
 		Config{
-			SystemPrompt:     systemPrompt,
-			ShortVoicePrompt: shortVoicePrompt,
+			SystemPrompt:             systemPrompt,
+			ShortVoicePrompt:         shortVoicePrompt,
+			ShortVoiceResponseWindow: responseWindow,
 		},
 		whitelist,
 		connStore,
@@ -93,16 +135,45 @@ func newUsecase(
 		greeting,
 		flood,
 		shortVoice,
+		voiceCooldown,
 		llm,
 		sender,
 		slog.Default(),
 	)
 }
 
-func TestUsecase_Execute(t *testing.T) {
+func runUsecaseTests(t *testing.T, tests []struct {
+	name    string
+	setup   func(ctrl *gomock.Controller) *Usecase
+	msg     model.IncomingMessage
+	wantErr error
+},
+) {
+	t.Helper()
+
 	ctx := context.Background()
 
-	tests := []struct {
+	for i := range tests {
+		tt := &tests[i]
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			uc := tt.setup(ctrl)
+
+			err := uc.Execute(ctx, tt.msg)
+
+			if tt.wantErr != nil {
+				require.ErrorIs(t, err, tt.wantErr)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestUsecase_TextMessages(t *testing.T) {
+	ctx := context.Background()
+
+	runUsecaseTests(t, []struct {
 		name    string
 		setup   func(ctrl *gomock.Controller) *Usecase
 		msg     model.IncomingMessage
@@ -120,7 +191,7 @@ func TestUsecase_Execute(t *testing.T) {
 				connStore.EXPECT().Get(ctx, testConn.ID).Return(testConn, true, nil)
 				whitelist.EXPECT().IsAllowed(ctx, testConn.Owner.UserID).Return(false, nil)
 
-				return newUsecase(t, whitelist, connStore, accountReader, llm, sender)
+				return newUsecase(t, whitelist, connStore, accountReader, llm, sender, mockVoiceCooldown(ctrl))
 			},
 			msg:     testMsg,
 			wantErr: nil,
@@ -144,7 +215,7 @@ func TestUsecase_Execute(t *testing.T) {
 					Text:                 testReply,
 				}).Return(nil)
 
-				return newUsecase(t, whitelist, connStore, accountReader, llm, sender)
+				return newUsecase(t, whitelist, connStore, accountReader, llm, sender, mockVoiceCooldown(ctrl))
 			},
 			msg:     testMsg,
 			wantErr: nil,
@@ -161,7 +232,7 @@ func TestUsecase_Execute(t *testing.T) {
 				connStore.EXPECT().Get(ctx, testConn.ID).Return(testConn, true, nil)
 				whitelist.EXPECT().IsAllowed(ctx, testConn.Owner.UserID).Return(true, nil)
 
-				return newUsecase(t, whitelist, connStore, accountReader, llm, sender)
+				return newUsecase(t, whitelist, connStore, accountReader, llm, sender, mockVoiceCooldown(ctrl))
 			},
 			msg: model.IncomingMessage{
 				BusinessConnectionID: "conn-1",
@@ -172,6 +243,18 @@ func TestUsecase_Execute(t *testing.T) {
 			},
 			wantErr: nil,
 		},
+	})
+}
+
+func TestUsecase_ErrorPropagation(t *testing.T) {
+	ctx := context.Background()
+
+	runUsecaseTests(t, []struct {
+		name    string
+		setup   func(ctrl *gomock.Controller) *Usecase
+		msg     model.IncomingMessage
+		wantErr error
+	}{
 		{
 			name: "LLM вернул ошибку — возвращаем ErrLLMGenerate",
 			setup: func(ctrl *gomock.Controller) *Usecase {
@@ -187,7 +270,7 @@ func TestUsecase_Execute(t *testing.T) {
 				llm.EXPECT().Generate(ctx, systemPrompt, testMsg.Text).
 					Return("", errDeepseekTimeoutStub)
 
-				return newUsecase(t, whitelist, connStore, accountReader, llm, sender)
+				return newUsecase(t, whitelist, connStore, accountReader, llm, sender, mockVoiceCooldown(ctrl))
 			},
 			msg:     testMsg,
 			wantErr: ErrLLMGenerate,
@@ -207,32 +290,10 @@ func TestUsecase_Execute(t *testing.T) {
 				llm.EXPECT().Generate(ctx, systemPrompt, testMsg.Text).Return(testReply, nil)
 				sender.EXPECT().Send(ctx, gomock.Any()).Return(errTelegramRateLimitStub)
 
-				return newUsecase(t, whitelist, connStore, accountReader, llm, sender)
+				return newUsecase(t, whitelist, connStore, accountReader, llm, sender, mockVoiceCooldown(ctrl))
 			},
 			msg:     testMsg,
 			wantErr: ErrSend,
-		},
-		{
-			name: "cache miss — идём в accountReader, кешируем",
-			setup: func(ctrl *gomock.Controller) *Usecase {
-				whitelist := mock.NewMockOwnerWhitelist(ctrl)
-				connStore := mock.NewMockBusinessConnectionStore(ctrl)
-				accountReader := mock.NewMockBusinessAccountReader(ctrl)
-				llm := mock.NewMockLLMClient(ctrl)
-				sender := mock.NewMockBusinessSender(ctrl)
-
-				connStore.EXPECT().Get(ctx, testConn.ID).Return(model.BusinessConnection{}, false, nil)
-				accountReader.EXPECT().GetConnection(ctx, testConn.ID).Return(testConn, nil)
-				connStore.EXPECT().Put(ctx, testConn).Return(nil)
-				whitelist.EXPECT().IsAllowed(ctx, testConn.Owner.UserID).Return(true, nil)
-				expectShowThinking(ctx, sender, testMsg)
-				llm.EXPECT().Generate(ctx, systemPrompt, testMsg.Text).Return(testReply, nil)
-				sender.EXPECT().Send(ctx, gomock.Any()).Return(nil)
-
-				return newUsecase(t, whitelist, connStore, accountReader, llm, sender)
-			},
-			msg:     testMsg,
-			wantErr: nil,
 		},
 		{
 			name: "show thinking failed — LLM и Send всё равно вызываются",
@@ -252,7 +313,58 @@ func TestUsecase_Execute(t *testing.T) {
 				llm.EXPECT().Generate(ctx, systemPrompt, testMsg.Text).Return(testReply, nil)
 				sender.EXPECT().Send(ctx, gomock.Any()).Return(nil)
 
-				return newUsecase(t, whitelist, connStore, accountReader, llm, sender)
+				return newUsecase(t, whitelist, connStore, accountReader, llm, sender, mockVoiceCooldown(ctrl))
+			},
+			msg:     testMsg,
+			wantErr: nil,
+		},
+		{
+			name: "voice window store error → ErrVoiceWindow",
+			setup: func(ctrl *gomock.Controller) *Usecase {
+				whitelist := mock.NewMockOwnerWhitelist(ctrl)
+				connStore := mock.NewMockBusinessConnectionStore(ctrl)
+				accountReader := mock.NewMockBusinessAccountReader(ctrl)
+				llm := mock.NewMockLLMClient(ctrl)
+				sender := mock.NewMockBusinessSender(ctrl)
+
+				connStore.EXPECT().Get(ctx, testConn.ID).Return(testConn, true, nil)
+				whitelist.EXPECT().IsAllowed(ctx, testConn.Owner.UserID).Return(true, nil)
+
+				return newUsecase(t, whitelist, connStore, accountReader, llm, sender, mockVoiceCooldownError(ctrl))
+			},
+			msg:     testVoiceMsg,
+			wantErr: ErrVoiceWindow,
+		},
+	})
+}
+
+func TestUsecase_EdgeCases(t *testing.T) {
+	ctx := context.Background()
+
+	runUsecaseTests(t, []struct {
+		name    string
+		setup   func(ctrl *gomock.Controller) *Usecase
+		msg     model.IncomingMessage
+		wantErr error
+	}{
+		{
+			name: "cache miss — идём в accountReader, кешируем",
+			setup: func(ctrl *gomock.Controller) *Usecase {
+				whitelist := mock.NewMockOwnerWhitelist(ctrl)
+				connStore := mock.NewMockBusinessConnectionStore(ctrl)
+				accountReader := mock.NewMockBusinessAccountReader(ctrl)
+				llm := mock.NewMockLLMClient(ctrl)
+				sender := mock.NewMockBusinessSender(ctrl)
+
+				connStore.EXPECT().Get(ctx, testConn.ID).Return(model.BusinessConnection{}, false, nil)
+				accountReader.EXPECT().GetConnection(ctx, testConn.ID).Return(testConn, nil)
+				connStore.EXPECT().Put(ctx, testConn).Return(nil)
+				whitelist.EXPECT().IsAllowed(ctx, testConn.Owner.UserID).Return(true, nil)
+				expectShowThinking(ctx, sender, testMsg)
+				llm.EXPECT().Generate(ctx, systemPrompt, testMsg.Text).Return(testReply, nil)
+				sender.EXPECT().Send(ctx, gomock.Any()).Return(nil)
+
+				return newUsecase(t, whitelist, connStore, accountReader, llm, sender, mockVoiceCooldown(ctrl))
 			},
 			msg:     testMsg,
 			wantErr: nil,
@@ -272,13 +384,25 @@ func TestUsecase_Execute(t *testing.T) {
 				llm.EXPECT().Generate(ctx, systemPrompt, testMsg.Text).Return(testReply, nil)
 				sender.EXPECT().Send(ctx, gomock.Any()).Return(nil)
 
-				return newUsecase(t, whitelist, connStore, accountReader, llm, sender)
+				return newUsecase(t, whitelist, connStore, accountReader, llm, sender, mockVoiceCooldown(ctrl))
 			},
 			msg:     testMsg,
 			wantErr: nil,
 		},
+	})
+}
+
+func TestUsecase_VoiceMessages(t *testing.T) {
+	ctx := context.Background()
+
+	runUsecaseTests(t, []struct {
+		name    string
+		setup   func(ctrl *gomock.Controller) *Usecase
+		msg     model.IncomingMessage
+		wantErr error
+	}{
 		{
-			name: "short voice ≤ порога — LLM вызван с short voice prompt и пустым userText",
+			name: "short voice ≤ порога + окно свободно — LLM вызван с short voice prompt",
 			setup: func(ctrl *gomock.Controller) *Usecase {
 				whitelist := mock.NewMockOwnerWhitelist(ctrl)
 				connStore := mock.NewMockBusinessConnectionStore(ctrl)
@@ -296,13 +420,40 @@ func TestUsecase_Execute(t *testing.T) {
 					Text:                 testReply,
 				}).Return(nil)
 
-				return newUsecase(t, whitelist, connStore, accountReader, llm, sender)
+				return newUsecase(t, whitelist, connStore, accountReader, llm, sender, mockVoiceCooldownAcquired(ctrl))
 			},
 			msg:     testVoiceMsg,
 			wantErr: nil,
 		},
 		{
-			name: "long voice > порога — бот молчит, LLM не вызывается",
+			name: "short voice + LLM error — Release вызывается, окно снимается",
+			setup: func(ctrl *gomock.Controller) *Usecase {
+				whitelist := mock.NewMockOwnerWhitelist(ctrl)
+				connStore := mock.NewMockBusinessConnectionStore(ctrl)
+				accountReader := mock.NewMockBusinessAccountReader(ctrl)
+				llm := mock.NewMockLLMClient(ctrl)
+				sender := mock.NewMockBusinessSender(ctrl)
+				voiceWindow := mock.NewMockVoiceReplyWindowStore(ctrl)
+
+				connStore.EXPECT().Get(ctx, testConn.ID).Return(testConn, true, nil)
+				whitelist.EXPECT().IsAllowed(ctx, testConn.Owner.UserID).Return(true, nil)
+				voiceWindow.EXPECT().
+					TryEnter(gomock.Any(), "conn-1", int64(999), responseWindow).
+					Return(true, nil)
+				expectShowThinking(ctx, sender, testVoiceMsg)
+				llm.EXPECT().Generate(ctx, shortVoicePrompt, "").
+					Return("", errDeepseekTimeoutStub)
+				voiceWindow.EXPECT().
+					Release(gomock.Any(), "conn-1", int64(999)).
+					Return(nil)
+
+				return newUsecase(t, whitelist, connStore, accountReader, llm, sender, voiceWindow)
+			},
+			msg:     testVoiceMsg,
+			wantErr: ErrLLMGenerate,
+		},
+		{
+			name: "short voice ≤ порога + окно занято — бот молчит",
 			setup: func(ctrl *gomock.Controller) *Usecase {
 				whitelist := mock.NewMockOwnerWhitelist(ctrl)
 				connStore := mock.NewMockBusinessConnectionStore(ctrl)
@@ -313,7 +464,25 @@ func TestUsecase_Execute(t *testing.T) {
 				connStore.EXPECT().Get(ctx, testConn.ID).Return(testConn, true, nil)
 				whitelist.EXPECT().IsAllowed(ctx, testConn.Owner.UserID).Return(true, nil)
 
-				return newUsecase(t, whitelist, connStore, accountReader, llm, sender)
+				return newUsecase(t, whitelist, connStore, accountReader, llm, sender, mockVoiceCooldownBlocked(ctrl))
+			},
+			msg:     testVoiceMsg,
+			wantErr: nil,
+		},
+		{
+			name: "long voice > порога — бот молчит, store и LLM не вызываются",
+			setup: func(ctrl *gomock.Controller) *Usecase {
+				whitelist := mock.NewMockOwnerWhitelist(ctrl)
+				connStore := mock.NewMockBusinessConnectionStore(ctrl)
+				accountReader := mock.NewMockBusinessAccountReader(ctrl)
+				llm := mock.NewMockLLMClient(ctrl)
+				sender := mock.NewMockBusinessSender(ctrl)
+
+				connStore.EXPECT().Get(ctx, testConn.ID).Return(testConn, true, nil)
+				whitelist.EXPECT().IsAllowed(ctx, testConn.Owner.UserID).Return(true, nil)
+
+				// TryEnter is never called — gomock enforces this
+				return newUsecase(t, whitelist, connStore, accountReader, llm, sender, mockVoiceCooldown(ctrl))
 			},
 			msg: model.IncomingMessage{
 				BusinessConnectionID: "conn-1",
@@ -324,20 +493,5 @@ func TestUsecase_Execute(t *testing.T) {
 			},
 			wantErr: nil,
 		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			uc := tt.setup(ctrl)
-
-			err := uc.Execute(ctx, tt.msg)
-
-			if tt.wantErr != nil {
-				require.ErrorIs(t, err, tt.wantErr)
-			} else {
-				require.NoError(t, err)
-			}
-		})
-	}
+	})
 }
