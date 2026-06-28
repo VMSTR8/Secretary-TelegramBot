@@ -8,12 +8,14 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"time"
 )
 
 type Config struct {
 	BaseURL string
 	APIKey  string
 	Model   string
+	Timeout time.Duration
 }
 
 type Client struct {
@@ -25,7 +27,7 @@ func NewClient(cfg Config) *Client {
 	return &Client{
 		cfg: cfg,
 		http: &http.Client{
-			Timeout: http.DefaultClient.Timeout,
+			Timeout: cfg.Timeout,
 		},
 	}
 }
