@@ -32,6 +32,7 @@ func main() {
 			newGreetingDetector,
 			newFloodDetector,
 			newShortVoiceDetector,
+			newVoiceReplyWindowStore,
 
 			newOwnerWhitelist,
 			newBusinessConnectionStore,
@@ -130,6 +131,10 @@ func newShortVoiceDetector(cfg *config.Config) *service.ShortVoiceDetector {
 	})
 }
 
+func newVoiceReplyWindowStore(r *redis.Client) repository.VoiceReplyWindowStore {
+	return redisstore.NewVoiceReplyWindowStore(r)
+}
+
 func newOwnerWhitelist(cfg *config.Config) repository.OwnerWhitelist {
 	return memory.NewOwnerWhitelist(cfg.AllowedOwners)
 }
@@ -165,8 +170,9 @@ func newLLMClient(c deepseek.Config) repository.LLMClient {
 
 func newHandleBusinessMessageConfig(cfg *config.Config) handle_business_message.Config {
 	return handle_business_message.Config{
-		SystemPrompt:     cfg.Bot.SystemPrompt,
-		ShortVoicePrompt: cfg.Bot.ShortVoicePrompt,
+		SystemPrompt:             cfg.Bot.SystemPrompt,
+		ShortVoicePrompt:         cfg.Bot.ShortVoicePrompt,
+		ShortVoiceResponseWindow: cfg.ShortVoice.ResponseWindow,
 	}
 }
 

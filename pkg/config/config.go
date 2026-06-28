@@ -62,7 +62,8 @@ type FloodConfig struct {
 }
 
 type ShortVoiceConfig struct {
-	MaxDuration time.Duration `default:"10s" envconfig:"SHORT_VOICE_MAX_DURATION"`
+	MaxDuration    time.Duration `default:"10s" envconfig:"SHORT_VOICE_MAX_DURATION"`
+	ResponseWindow time.Duration `default:"60s" envconfig:"SHORT_VOICE_RESPONSE_WINDOW"`
 }
 
 func Load() (*Config, error) {
@@ -71,19 +72,35 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
 
-	if err := cfg.validate(); err != nil {
+	if err := cfg.validateFlood(); err != nil {
+		return nil, fmt.Errorf("validate config: %w", err)
+	}
+
+	if err := cfg.validateShortVoice(); err != nil {
 		return nil, fmt.Errorf("validate config: %w", err)
 	}
 
 	return cfg, nil
 }
 
-func (c *Config) validate() error {
+func (c *Config) validateFlood() error {
 	if c.Flood.RedisTTL < c.Flood.WindowDuration {
 		return fmt.Errorf("%w: ttl=%s, window=%s",
 			ErrInvalidFloodTTL,
 			c.Flood.RedisTTL,
 			c.Flood.WindowDuration,
+		)
+	}
+
+	return nil
+}
+
+func (c *Config) validateShortVoice() error {
+	if c.ShortVoice.ResponseWindow <= 0 || c.ShortVoice.MaxDuration <= 0 {
+		return fmt.Errorf("%w: response_window=%d, max_duration=%d",
+			ErrInvalidShortVoiceCfg,
+			c.ShortVoice.ResponseWindow,
+			c.ShortVoice.MaxDuration,
 		)
 	}
 

@@ -7,11 +7,13 @@ import (
 	"noirbot/internal/domain/model"
 	"noirbot/internal/domain/repository"
 	"noirbot/internal/domain/service"
+	"time"
 )
 
 type Config struct {
-	SystemPrompt     string
-	ShortVoicePrompt string
+	SystemPrompt             string
+	ShortVoicePrompt         string
+	ShortVoiceResponseWindow time.Duration
 }
 
 type Usecase struct {
@@ -22,6 +24,7 @@ type Usecase struct {
 	greetingDetector   *service.GreetingDetector
 	floodDetector      *service.FloodDetector
 	shortVoiceDetector *service.ShortVoiceDetector
+	voiceWindow        repository.VoiceReplyWindowStore
 	llm                repository.LLMClient
 	sender             repository.BusinessSender
 	log                *slog.Logger
@@ -40,6 +43,7 @@ func New(
 	greetingDetector *service.GreetingDetector,
 	floodDetector *service.FloodDetector,
 	shortVoiceDetector *service.ShortVoiceDetector,
+	voiceWindow repository.VoiceReplyWindowStore,
 	llm repository.LLMClient,
 	sender repository.BusinessSender,
 	log *slog.Logger,
@@ -52,6 +56,7 @@ func New(
 		greetingDetector:   greetingDetector,
 		floodDetector:      floodDetector,
 		shortVoiceDetector: shortVoiceDetector,
+		voiceWindow:        voiceWindow,
 		llm:                llm,
 		sender:             sender,
 		log:                log.With("usecase", "handle_business_message"),
@@ -88,6 +93,23 @@ func (uc *Usecase) Execute(ctx context.Context, msg model.IncomingMessage) error
 		return nil
 	}
 
+	shortVoice := decision.Kind == model.TriggerKindShortVoice
+	if shortVoice {
+		acquired, tryErr := uc.voiceWindow.TryEnter(
+			ctx,
+			msg.BusinessConnectionID,
+			msg.GuestID,
+			uc.cfg.ShortVoiceResponseWindow,
+		)
+		if tryErr != nil {
+			return fmt.Errorf("%w: %w", ErrVoiceWindow, tryErr)
+		}
+
+		if !acquired {
+			return nil
+		}
+	}
+
 	uc.log.InfoContext(ctx, "trigger fired",
 		slog.String("kind", string(decision.Kind)),
 		slog.String("reason", decision.Reason),
@@ -108,16 +130,30 @@ func (uc *Usecase) Execute(ctx context.Context, msg model.IncomingMessage) error
 
 	reply, err := uc.llm.Generate(ctx, in.SystemPrompt, in.UserText)
 	if err != nil {
+		if shortVoice {
+			uc.releaseVoiceWindow(ctx, msg)
+		}
+
 		return fmt.Errorf("%w: %w", ErrLLMGenerate, err)
 	}
 
 	replyTarget.Text = reply
 
 	if sndErr := uc.sender.Send(ctx, replyTarget); sndErr != nil {
+		if shortVoice {
+			uc.releaseVoiceWindow(ctx, msg)
+		}
+
 		return fmt.Errorf("%w: %w", ErrSend, sndErr)
 	}
 
 	return nil
+}
+
+func (uc *Usecase) releaseVoiceWindow(ctx context.Context, msg model.IncomingMessage) {
+	if relErr := uc.voiceWindow.Release(ctx, msg.BusinessConnectionID, msg.GuestID); relErr != nil {
+		uc.log.WarnContext(ctx, "voice window release failed", "err", relErr)
+	}
 }
 
 func (uc *Usecase) resolveOwner(ctx context.Context, connectionID string) (model.Owner, error) {

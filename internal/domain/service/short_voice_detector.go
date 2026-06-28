@@ -19,7 +19,9 @@ func NewShortVoiceDetector(cfg ShortVoiceDetectorConfig) *ShortVoiceDetector {
 	}
 }
 
-func (d *ShortVoiceDetector) Detect(msg model.IncomingMessage) model.TriggerDecision {
+func (d *ShortVoiceDetector) Detect(
+	msg model.IncomingMessage,
+) model.TriggerDecision {
 	if msg.Kind != model.MessageKindVoice {
 		return model.TriggerDecision{Kind: model.TriggerKindNone}
 	}
