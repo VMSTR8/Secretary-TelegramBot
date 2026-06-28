@@ -96,7 +96,7 @@ func (c *Config) validateFlood() error {
 }
 
 func (c *Config) validateShortVoice() error {
-	if c.ShortVoice.ResponseWindow < 0 && c.ShortVoice.MaxDuration < 0 {
+	if c.ShortVoice.ResponseWindow <= 0 || c.ShortVoice.MaxDuration <= 0 {
 		return fmt.Errorf("%w: response_window=%d, max_duration=%d",
 			ErrInvalidShortVoiceCfg,
 			c.ShortVoice.ResponseWindow,
