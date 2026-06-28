@@ -57,6 +57,46 @@ func expectShowThinking(ctx context.Context, sender *mock.MockBusinessSender, ms
 	}).Return(nil)
 }
 
+// usecaseMocks bundles the five collaborator mocks every test case builds.
+type usecaseMocks struct {
+	whitelist     *mock.MockOwnerWhitelist
+	connStore     *mock.MockBusinessConnectionStore
+	accountReader *mock.MockBusinessAccountReader
+	llm           *mock.MockLLMClient
+	sender        *mock.MockBusinessSender
+}
+
+func newMocks(ctrl *gomock.Controller) usecaseMocks {
+	return usecaseMocks{
+		whitelist:     mock.NewMockOwnerWhitelist(ctrl),
+		connStore:     mock.NewMockBusinessConnectionStore(ctrl),
+		accountReader: mock.NewMockBusinessAccountReader(ctrl),
+		llm:           mock.NewMockLLMClient(ctrl),
+		sender:        mock.NewMockBusinessSender(ctrl),
+	}
+}
+
+// expectAllowedOwner sets up the common cache-hit + whitelisted-owner path.
+func (m usecaseMocks) expectAllowedOwner(ctx context.Context) {
+	m.connStore.EXPECT().Get(ctx, testConn.ID).Return(testConn, true, nil)
+	m.whitelist.EXPECT().IsAllowed(ctx, testConn.Owner.UserID).Return(true, nil)
+}
+
+// expectTextReply sets up the full allowed-owner → think → generate → send happy
+// path for testMsg. sendErr is what Send returns (nil for success).
+func (m usecaseMocks) expectTextReply(ctx context.Context, sendErr error) {
+	m.expectAllowedOwner(ctx)
+	expectShowThinking(ctx, m.sender, testMsg)
+	m.llm.EXPECT().Generate(ctx, systemPrompt, testMsg.Text).Return(testReply, nil)
+	m.sender.EXPECT().Send(ctx, gomock.Any()).Return(sendErr)
+}
+
+func (m usecaseMocks) usecase(t *testing.T, voiceCooldown repository.VoiceReplyWindowStore) *Usecase {
+	t.Helper()
+
+	return newUsecase(t, m.whitelist, m.connStore, m.accountReader, m.llm, m.sender, voiceCooldown)
+}
+
 // mockVoiceCooldown returns a mock VoiceReplyWindowStore that expects
 // TryEnter to NOT be called. Use for non-voice test cases.
 func mockVoiceCooldown(ctrl *gomock.Controller) repository.VoiceReplyWindowStore {
@@ -182,16 +222,11 @@ func TestUsecase_TextMessages(t *testing.T) {
 		{
 			name: "owner not in whitelist — LLM и sender не вызываются",
 			setup: func(ctrl *gomock.Controller) *Usecase {
-				whitelist := mock.NewMockOwnerWhitelist(ctrl)
-				connStore := mock.NewMockBusinessConnectionStore(ctrl)
-				accountReader := mock.NewMockBusinessAccountReader(ctrl)
-				llm := mock.NewMockLLMClient(ctrl)
-				sender := mock.NewMockBusinessSender(ctrl)
+				m := newMocks(ctrl)
+				m.connStore.EXPECT().Get(ctx, testConn.ID).Return(testConn, true, nil)
+				m.whitelist.EXPECT().IsAllowed(ctx, testConn.Owner.UserID).Return(false, nil)
 
-				connStore.EXPECT().Get(ctx, testConn.ID).Return(testConn, true, nil)
-				whitelist.EXPECT().IsAllowed(ctx, testConn.Owner.UserID).Return(false, nil)
-
-				return newUsecase(t, whitelist, connStore, accountReader, llm, sender, mockVoiceCooldown(ctrl))
+				return m.usecase(t, mockVoiceCooldown(ctrl))
 			},
 			msg:     testMsg,
 			wantErr: nil,
@@ -199,23 +234,17 @@ func TestUsecase_TextMessages(t *testing.T) {
 		{
 			name: "greeting match — LLM вызван, ответ отправлен",
 			setup: func(ctrl *gomock.Controller) *Usecase {
-				whitelist := mock.NewMockOwnerWhitelist(ctrl)
-				connStore := mock.NewMockBusinessConnectionStore(ctrl)
-				accountReader := mock.NewMockBusinessAccountReader(ctrl)
-				llm := mock.NewMockLLMClient(ctrl)
-				sender := mock.NewMockBusinessSender(ctrl)
-
-				connStore.EXPECT().Get(ctx, testConn.ID).Return(testConn, true, nil)
-				whitelist.EXPECT().IsAllowed(ctx, testConn.Owner.UserID).Return(true, nil)
-				expectShowThinking(ctx, sender, testMsg)
-				llm.EXPECT().Generate(ctx, systemPrompt, testMsg.Text).Return(testReply, nil)
-				sender.EXPECT().Send(ctx, model.ReplyDraft{
+				m := newMocks(ctrl)
+				m.expectAllowedOwner(ctx)
+				expectShowThinking(ctx, m.sender, testMsg)
+				m.llm.EXPECT().Generate(ctx, systemPrompt, testMsg.Text).Return(testReply, nil)
+				m.sender.EXPECT().Send(ctx, model.ReplyDraft{
 					BusinessConnectionID: testMsg.BusinessConnectionID,
 					GuestID:              testMsg.GuestID,
 					Text:                 testReply,
 				}).Return(nil)
 
-				return newUsecase(t, whitelist, connStore, accountReader, llm, sender, mockVoiceCooldown(ctrl))
+				return m.usecase(t, mockVoiceCooldown(ctrl))
 			},
 			msg:     testMsg,
 			wantErr: nil,
@@ -223,16 +252,10 @@ func TestUsecase_TextMessages(t *testing.T) {
 		{
 			name: "длинное сообщение без приветствия — бот молчит",
 			setup: func(ctrl *gomock.Controller) *Usecase {
-				whitelist := mock.NewMockOwnerWhitelist(ctrl)
-				connStore := mock.NewMockBusinessConnectionStore(ctrl)
-				accountReader := mock.NewMockBusinessAccountReader(ctrl)
-				llm := mock.NewMockLLMClient(ctrl)
-				sender := mock.NewMockBusinessSender(ctrl)
+				m := newMocks(ctrl)
+				m.expectAllowedOwner(ctx)
 
-				connStore.EXPECT().Get(ctx, testConn.ID).Return(testConn, true, nil)
-				whitelist.EXPECT().IsAllowed(ctx, testConn.Owner.UserID).Return(true, nil)
-
-				return newUsecase(t, whitelist, connStore, accountReader, llm, sender, mockVoiceCooldown(ctrl))
+				return m.usecase(t, mockVoiceCooldown(ctrl))
 			},
 			msg: model.IncomingMessage{
 				BusinessConnectionID: "conn-1",
@@ -258,19 +281,13 @@ func TestUsecase_ErrorPropagation(t *testing.T) {
 		{
 			name: "LLM вернул ошибку — возвращаем ErrLLMGenerate",
 			setup: func(ctrl *gomock.Controller) *Usecase {
-				whitelist := mock.NewMockOwnerWhitelist(ctrl)
-				connStore := mock.NewMockBusinessConnectionStore(ctrl)
-				accountReader := mock.NewMockBusinessAccountReader(ctrl)
-				llm := mock.NewMockLLMClient(ctrl)
-				sender := mock.NewMockBusinessSender(ctrl)
-
-				connStore.EXPECT().Get(ctx, testConn.ID).Return(testConn, true, nil)
-				whitelist.EXPECT().IsAllowed(ctx, testConn.Owner.UserID).Return(true, nil)
-				expectShowThinking(ctx, sender, testMsg)
-				llm.EXPECT().Generate(ctx, systemPrompt, testMsg.Text).
+				m := newMocks(ctrl)
+				m.expectAllowedOwner(ctx)
+				expectShowThinking(ctx, m.sender, testMsg)
+				m.llm.EXPECT().Generate(ctx, systemPrompt, testMsg.Text).
 					Return("", errDeepseekTimeoutStub)
 
-				return newUsecase(t, whitelist, connStore, accountReader, llm, sender, mockVoiceCooldown(ctrl))
+				return m.usecase(t, mockVoiceCooldown(ctrl))
 			},
 			msg:     testMsg,
 			wantErr: ErrLLMGenerate,
@@ -278,19 +295,10 @@ func TestUsecase_ErrorPropagation(t *testing.T) {
 		{
 			name: "sender вернул ошибку — возвращаем ErrSend",
 			setup: func(ctrl *gomock.Controller) *Usecase {
-				whitelist := mock.NewMockOwnerWhitelist(ctrl)
-				connStore := mock.NewMockBusinessConnectionStore(ctrl)
-				accountReader := mock.NewMockBusinessAccountReader(ctrl)
-				llm := mock.NewMockLLMClient(ctrl)
-				sender := mock.NewMockBusinessSender(ctrl)
+				m := newMocks(ctrl)
+				m.expectTextReply(ctx, errTelegramRateLimitStub)
 
-				connStore.EXPECT().Get(ctx, testConn.ID).Return(testConn, true, nil)
-				whitelist.EXPECT().IsAllowed(ctx, testConn.Owner.UserID).Return(true, nil)
-				expectShowThinking(ctx, sender, testMsg)
-				llm.EXPECT().Generate(ctx, systemPrompt, testMsg.Text).Return(testReply, nil)
-				sender.EXPECT().Send(ctx, gomock.Any()).Return(errTelegramRateLimitStub)
-
-				return newUsecase(t, whitelist, connStore, accountReader, llm, sender, mockVoiceCooldown(ctrl))
+				return m.usecase(t, mockVoiceCooldown(ctrl))
 			},
 			msg:     testMsg,
 			wantErr: ErrSend,
@@ -298,22 +306,16 @@ func TestUsecase_ErrorPropagation(t *testing.T) {
 		{
 			name: "show thinking failed — LLM и Send всё равно вызываются",
 			setup: func(ctrl *gomock.Controller) *Usecase {
-				whitelist := mock.NewMockOwnerWhitelist(ctrl)
-				connStore := mock.NewMockBusinessConnectionStore(ctrl)
-				accountReader := mock.NewMockBusinessAccountReader(ctrl)
-				llm := mock.NewMockLLMClient(ctrl)
-				sender := mock.NewMockBusinessSender(ctrl)
-
-				connStore.EXPECT().Get(ctx, testConn.ID).Return(testConn, true, nil)
-				whitelist.EXPECT().IsAllowed(ctx, testConn.Owner.UserID).Return(true, nil)
-				sender.EXPECT().ShowThinking(ctx, model.ReplyDraft{
+				m := newMocks(ctrl)
+				m.expectAllowedOwner(ctx)
+				m.sender.EXPECT().ShowThinking(ctx, model.ReplyDraft{
 					BusinessConnectionID: testMsg.BusinessConnectionID,
 					GuestID:              testMsg.GuestID,
 				}).Return(errTelegramDraftStub)
-				llm.EXPECT().Generate(ctx, systemPrompt, testMsg.Text).Return(testReply, nil)
-				sender.EXPECT().Send(ctx, gomock.Any()).Return(nil)
+				m.llm.EXPECT().Generate(ctx, systemPrompt, testMsg.Text).Return(testReply, nil)
+				m.sender.EXPECT().Send(ctx, gomock.Any()).Return(nil)
 
-				return newUsecase(t, whitelist, connStore, accountReader, llm, sender, mockVoiceCooldown(ctrl))
+				return m.usecase(t, mockVoiceCooldown(ctrl))
 			},
 			msg:     testMsg,
 			wantErr: nil,
@@ -321,16 +323,10 @@ func TestUsecase_ErrorPropagation(t *testing.T) {
 		{
 			name: "voice window store error → ErrVoiceWindow",
 			setup: func(ctrl *gomock.Controller) *Usecase {
-				whitelist := mock.NewMockOwnerWhitelist(ctrl)
-				connStore := mock.NewMockBusinessConnectionStore(ctrl)
-				accountReader := mock.NewMockBusinessAccountReader(ctrl)
-				llm := mock.NewMockLLMClient(ctrl)
-				sender := mock.NewMockBusinessSender(ctrl)
+				m := newMocks(ctrl)
+				m.expectAllowedOwner(ctx)
 
-				connStore.EXPECT().Get(ctx, testConn.ID).Return(testConn, true, nil)
-				whitelist.EXPECT().IsAllowed(ctx, testConn.Owner.UserID).Return(true, nil)
-
-				return newUsecase(t, whitelist, connStore, accountReader, llm, sender, mockVoiceCooldownError(ctrl))
+				return m.usecase(t, mockVoiceCooldownError(ctrl))
 			},
 			msg:     testVoiceMsg,
 			wantErr: ErrVoiceWindow,
@@ -350,21 +346,16 @@ func TestUsecase_EdgeCases(t *testing.T) {
 		{
 			name: "cache miss — идём в accountReader, кешируем",
 			setup: func(ctrl *gomock.Controller) *Usecase {
-				whitelist := mock.NewMockOwnerWhitelist(ctrl)
-				connStore := mock.NewMockBusinessConnectionStore(ctrl)
-				accountReader := mock.NewMockBusinessAccountReader(ctrl)
-				llm := mock.NewMockLLMClient(ctrl)
-				sender := mock.NewMockBusinessSender(ctrl)
+				m := newMocks(ctrl)
+				m.connStore.EXPECT().Get(ctx, testConn.ID).Return(model.BusinessConnection{}, false, nil)
+				m.accountReader.EXPECT().GetConnection(ctx, testConn.ID).Return(testConn, nil)
+				m.connStore.EXPECT().Put(ctx, testConn).Return(nil)
+				m.whitelist.EXPECT().IsAllowed(ctx, testConn.Owner.UserID).Return(true, nil)
+				expectShowThinking(ctx, m.sender, testMsg)
+				m.llm.EXPECT().Generate(ctx, systemPrompt, testMsg.Text).Return(testReply, nil)
+				m.sender.EXPECT().Send(ctx, gomock.Any()).Return(nil)
 
-				connStore.EXPECT().Get(ctx, testConn.ID).Return(model.BusinessConnection{}, false, nil)
-				accountReader.EXPECT().GetConnection(ctx, testConn.ID).Return(testConn, nil)
-				connStore.EXPECT().Put(ctx, testConn).Return(nil)
-				whitelist.EXPECT().IsAllowed(ctx, testConn.Owner.UserID).Return(true, nil)
-				expectShowThinking(ctx, sender, testMsg)
-				llm.EXPECT().Generate(ctx, systemPrompt, testMsg.Text).Return(testReply, nil)
-				sender.EXPECT().Send(ctx, gomock.Any()).Return(nil)
-
-				return newUsecase(t, whitelist, connStore, accountReader, llm, sender, mockVoiceCooldown(ctrl))
+				return m.usecase(t, mockVoiceCooldown(ctrl))
 			},
 			msg:     testMsg,
 			wantErr: nil,
@@ -372,19 +363,10 @@ func TestUsecase_EdgeCases(t *testing.T) {
 		{
 			name: "пустой whitelist (permissive) — любой owner проходит",
 			setup: func(ctrl *gomock.Controller) *Usecase {
-				whitelist := mock.NewMockOwnerWhitelist(ctrl)
-				connStore := mock.NewMockBusinessConnectionStore(ctrl)
-				accountReader := mock.NewMockBusinessAccountReader(ctrl)
-				llm := mock.NewMockLLMClient(ctrl)
-				sender := mock.NewMockBusinessSender(ctrl)
+				m := newMocks(ctrl)
+				m.expectTextReply(ctx, nil)
 
-				connStore.EXPECT().Get(ctx, testConn.ID).Return(testConn, true, nil)
-				whitelist.EXPECT().IsAllowed(ctx, testConn.Owner.UserID).Return(true, nil)
-				expectShowThinking(ctx, sender, testMsg)
-				llm.EXPECT().Generate(ctx, systemPrompt, testMsg.Text).Return(testReply, nil)
-				sender.EXPECT().Send(ctx, gomock.Any()).Return(nil)
-
-				return newUsecase(t, whitelist, connStore, accountReader, llm, sender, mockVoiceCooldown(ctrl))
+				return m.usecase(t, mockVoiceCooldown(ctrl))
 			},
 			msg:     testMsg,
 			wantErr: nil,
@@ -404,23 +386,17 @@ func TestUsecase_VoiceMessages(t *testing.T) {
 		{
 			name: "short voice ≤ порога + окно свободно — LLM вызван с short voice prompt",
 			setup: func(ctrl *gomock.Controller) *Usecase {
-				whitelist := mock.NewMockOwnerWhitelist(ctrl)
-				connStore := mock.NewMockBusinessConnectionStore(ctrl)
-				accountReader := mock.NewMockBusinessAccountReader(ctrl)
-				llm := mock.NewMockLLMClient(ctrl)
-				sender := mock.NewMockBusinessSender(ctrl)
-
-				connStore.EXPECT().Get(ctx, testConn.ID).Return(testConn, true, nil)
-				whitelist.EXPECT().IsAllowed(ctx, testConn.Owner.UserID).Return(true, nil)
-				expectShowThinking(ctx, sender, testVoiceMsg)
-				llm.EXPECT().Generate(ctx, shortVoicePrompt, "").Return(testReply, nil)
-				sender.EXPECT().Send(ctx, model.ReplyDraft{
+				m := newMocks(ctrl)
+				m.expectAllowedOwner(ctx)
+				expectShowThinking(ctx, m.sender, testVoiceMsg)
+				m.llm.EXPECT().Generate(ctx, shortVoicePrompt, "").Return(testReply, nil)
+				m.sender.EXPECT().Send(ctx, model.ReplyDraft{
 					BusinessConnectionID: testVoiceMsg.BusinessConnectionID,
 					GuestID:              testVoiceMsg.GuestID,
 					Text:                 testReply,
 				}).Return(nil)
 
-				return newUsecase(t, whitelist, connStore, accountReader, llm, sender, mockVoiceCooldownAcquired(ctrl))
+				return m.usecase(t, mockVoiceCooldownAcquired(ctrl))
 			},
 			msg:     testVoiceMsg,
 			wantErr: nil,
@@ -428,26 +404,21 @@ func TestUsecase_VoiceMessages(t *testing.T) {
 		{
 			name: "short voice + LLM error — Release вызывается, окно снимается",
 			setup: func(ctrl *gomock.Controller) *Usecase {
-				whitelist := mock.NewMockOwnerWhitelist(ctrl)
-				connStore := mock.NewMockBusinessConnectionStore(ctrl)
-				accountReader := mock.NewMockBusinessAccountReader(ctrl)
-				llm := mock.NewMockLLMClient(ctrl)
-				sender := mock.NewMockBusinessSender(ctrl)
+				m := newMocks(ctrl)
 				voiceWindow := mock.NewMockVoiceReplyWindowStore(ctrl)
 
-				connStore.EXPECT().Get(ctx, testConn.ID).Return(testConn, true, nil)
-				whitelist.EXPECT().IsAllowed(ctx, testConn.Owner.UserID).Return(true, nil)
+				m.expectAllowedOwner(ctx)
 				voiceWindow.EXPECT().
 					TryEnter(gomock.Any(), "conn-1", int64(999), responseWindow).
 					Return(true, nil)
-				expectShowThinking(ctx, sender, testVoiceMsg)
-				llm.EXPECT().Generate(ctx, shortVoicePrompt, "").
+				expectShowThinking(ctx, m.sender, testVoiceMsg)
+				m.llm.EXPECT().Generate(ctx, shortVoicePrompt, "").
 					Return("", errDeepseekTimeoutStub)
 				voiceWindow.EXPECT().
 					Release(gomock.Any(), "conn-1", int64(999)).
 					Return(nil)
 
-				return newUsecase(t, whitelist, connStore, accountReader, llm, sender, voiceWindow)
+				return m.usecase(t, voiceWindow)
 			},
 			msg:     testVoiceMsg,
 			wantErr: ErrLLMGenerate,
@@ -455,16 +426,10 @@ func TestUsecase_VoiceMessages(t *testing.T) {
 		{
 			name: "short voice ≤ порога + окно занято — бот молчит",
 			setup: func(ctrl *gomock.Controller) *Usecase {
-				whitelist := mock.NewMockOwnerWhitelist(ctrl)
-				connStore := mock.NewMockBusinessConnectionStore(ctrl)
-				accountReader := mock.NewMockBusinessAccountReader(ctrl)
-				llm := mock.NewMockLLMClient(ctrl)
-				sender := mock.NewMockBusinessSender(ctrl)
+				m := newMocks(ctrl)
+				m.expectAllowedOwner(ctx)
 
-				connStore.EXPECT().Get(ctx, testConn.ID).Return(testConn, true, nil)
-				whitelist.EXPECT().IsAllowed(ctx, testConn.Owner.UserID).Return(true, nil)
-
-				return newUsecase(t, whitelist, connStore, accountReader, llm, sender, mockVoiceCooldownBlocked(ctrl))
+				return m.usecase(t, mockVoiceCooldownBlocked(ctrl))
 			},
 			msg:     testVoiceMsg,
 			wantErr: nil,
@@ -472,17 +437,10 @@ func TestUsecase_VoiceMessages(t *testing.T) {
 		{
 			name: "long voice > порога — бот молчит, store и LLM не вызываются",
 			setup: func(ctrl *gomock.Controller) *Usecase {
-				whitelist := mock.NewMockOwnerWhitelist(ctrl)
-				connStore := mock.NewMockBusinessConnectionStore(ctrl)
-				accountReader := mock.NewMockBusinessAccountReader(ctrl)
-				llm := mock.NewMockLLMClient(ctrl)
-				sender := mock.NewMockBusinessSender(ctrl)
-
-				connStore.EXPECT().Get(ctx, testConn.ID).Return(testConn, true, nil)
-				whitelist.EXPECT().IsAllowed(ctx, testConn.Owner.UserID).Return(true, nil)
-
+				m := newMocks(ctrl)
+				m.expectAllowedOwner(ctx)
 				// TryEnter is never called — gomock enforces this
-				return newUsecase(t, whitelist, connStore, accountReader, llm, sender, mockVoiceCooldown(ctrl))
+				return m.usecase(t, mockVoiceCooldown(ctrl))
 			},
 			msg: model.IncomingMessage{
 				BusinessConnectionID: "conn-1",
