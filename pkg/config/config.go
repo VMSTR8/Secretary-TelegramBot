@@ -12,6 +12,7 @@ type Config struct {
 	HTTP          HTTPConfig
 	Redis         RedisConfig
 	DeepSeek      DeepSeekConfig
+	Groq          GroqConfig
 	Bot           BotConfig
 	Flood         FloodConfig
 	Greetings     []string `default:"привет,прив,здоров,хай,ку" envconfig:"GREETINGS"`
@@ -47,6 +48,13 @@ type DeepSeekConfig struct {
 	APIKey  string        `envconfig:"DEEPSEEK_API_KEY"          required:"true"`
 	Model   string        `default:"deepseek-chat"               envconfig:"DEEPSEEK_MODEL"`
 	Timeout time.Duration `default:"30s"                         envconfig:"DEEPSEEK_TIMEOUT"`
+}
+
+type GroqConfig struct {
+	BaseURL string        `envconfig:"GROQ_BASE_URL"  required:"true"`
+	APIKey  string        `envconfig:"GROQ_API_KEY"   required:"true"`
+	Model   string        `default:"whisper-large-v3" envconfig:"GROQ_MODEL"`
+	Timeout time.Duration `default:"30s"              envconfig:"GROQ_TIMEOUT"`
 }
 
 type BotConfig struct {

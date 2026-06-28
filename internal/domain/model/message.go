@@ -17,6 +17,7 @@ type IncomingMessage struct {
 	Text                 string
 	VoiceDuration        time.Duration
 	ReceivedAt           time.Time
+	VoiceFileID          string
 }
 
 type ReplyDraft struct {
