@@ -32,7 +32,9 @@ func NewClient(cfg Config) *Client {
 	}
 }
 
-func (c *Client) Transcribe(ctx context.Context, reader io.Reader) (string, error) {
+func (c *Client) Transcribe(ctx context.Context, reader io.ReadCloser) (string, error) {
+	defer func() { _ = reader.Close() }()
+
 	var buf bytes.Buffer
 
 	w := multipart.NewWriter(&buf)
@@ -51,7 +53,7 @@ func (c *Client) Transcribe(ctx context.Context, reader io.Reader) (string, erro
 	}
 
 	if clsErr := w.Close(); clsErr != nil {
-		return "", fmt.Errorf("groq transcribe: close form file err: %w", clsErr)
+		return "", fmt.Errorf("groq transcribe: close multipart writer: %w", clsErr)
 	}
 
 	req, err := http.NewRequestWithContext(
