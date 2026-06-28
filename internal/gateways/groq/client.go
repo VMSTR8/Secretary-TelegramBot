@@ -87,15 +87,11 @@ func (c *Client) Transcribe(ctx context.Context, reader io.ReadCloser) (string, 
 		)
 	}
 
-	type Response struct {
-		Text string `json:"text"`
-	}
+	var result transcribeResponse
 
-	var response Response
-
-	if ndErr := json.NewDecoder(resp.Body).Decode(&response); ndErr != nil {
+	if ndErr := json.NewDecoder(resp.Body).Decode(&result); ndErr != nil {
 		return "", fmt.Errorf("groq transcribe: decode response err: %w", ndErr)
 	}
 
-	return response.Text, nil
+	return result.Text, nil
 }
