@@ -33,6 +33,7 @@ func (m *UpdateMapper) ToIncomingMessage(src *tgmodels.Message) (model.IncomingM
 	case src.Voice != nil:
 		base.Kind = model.MessageKindVoice
 		base.VoiceDuration = time.Duration(src.Voice.Duration) * time.Second
+		base.VoiceFileID = src.Voice.FileID
 
 		return base, true
 	default:

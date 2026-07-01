@@ -17,6 +17,7 @@ type Config struct {
 	Flood         FloodConfig
 	Greetings     []string `default:"привет,прив,здоров,хай,ку" envconfig:"GREETINGS"`
 	ShortVoice    ShortVoiceConfig
+	LongVoice     LongVoiceConfig
 	AllowedOwners []int64 `envconfig:"ALLOWED_OWNERS"`
 }
 
@@ -60,6 +61,7 @@ type GroqConfig struct {
 type BotConfig struct {
 	SystemPrompt     string `envconfig:"BOT_SYSTEM_PROMPT"      required:"true"`
 	ShortVoicePrompt string `envconfig:"BOT_SHORT_VOICE_PROMPT" required:"true"`
+	LongVoicePrompt  string `envconfig:"BOT_LONG_VOICE_PROMPT"  required:"true"`
 }
 
 type FloodConfig struct {
@@ -74,6 +76,11 @@ type ShortVoiceConfig struct {
 	ResponseWindow time.Duration `default:"60s" envconfig:"SHORT_VOICE_RESPONSE_WINDOW"`
 }
 
+type LongVoiceConfig struct {
+	MinDuration time.Duration `default:"10s"  envconfig:"LONG_VOICE_MIN_DURATION"`
+	MaxDuration time.Duration `default:"600s" envconfig:"LONG_VOICE_MAX_DURATION"`
+}
+
 func Load() (*Config, error) {
 	cfg := &Config{}
 	if err := envconfig.Process("", cfg); err != nil {
@@ -85,6 +92,10 @@ func Load() (*Config, error) {
 	}
 
 	if err := cfg.validateShortVoice(); err != nil {
+		return nil, fmt.Errorf("validate config: %w", err)
+	}
+
+	if err := cfg.validateLongVoice(); err != nil {
 		return nil, fmt.Errorf("validate config: %w", err)
 	}
 
@@ -109,6 +120,18 @@ func (c *Config) validateShortVoice() error {
 			ErrInvalidShortVoiceCfg,
 			c.ShortVoice.ResponseWindow,
 			c.ShortVoice.MaxDuration,
+		)
+	}
+
+	return nil
+}
+
+func (c *Config) validateLongVoice() error {
+	if c.LongVoice.MaxDuration <= c.LongVoice.MinDuration {
+		return fmt.Errorf("%w: min=%s, max=%s",
+			ErrInvalidLongVoiceCfg,
+			c.LongVoice.MinDuration,
+			c.LongVoice.MaxDuration,
 		)
 	}
 

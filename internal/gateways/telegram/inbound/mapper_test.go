@@ -15,12 +15,13 @@ func TestUpdateMapper_ToIncomingMessage(t *testing.T) {
 	from := &tgmodels.User{ID: 999}
 
 	tests := []struct {
-		name     string
-		src      *tgmodels.Message
-		wantOK   bool
-		wantKind model.MessageKind
-		wantText string
-		wantDur  time.Duration
+		name       string
+		src        *tgmodels.Message
+		wantOK     bool
+		wantKind   model.MessageKind
+		wantText   string
+		wantDur    time.Duration
+		wantFileID string
 	}{
 		{
 			name: "text сообщение → MessageKindText",
@@ -34,15 +35,16 @@ func TestUpdateMapper_ToIncomingMessage(t *testing.T) {
 			wantText: "привет",
 		},
 		{
-			name: "voice сообщение → MessageKindVoice + длительность",
+			name: "voice сообщение → MessageKindVoice + длительность + file id",
 			src: &tgmodels.Message{
 				BusinessConnectionID: "conn-1",
 				From:                 from,
-				Voice:                &tgmodels.Voice{Duration: 7},
+				Voice:                &tgmodels.Voice{Duration: 7, FileID: "voice-abc"},
 			},
-			wantOK:   true,
-			wantKind: model.MessageKindVoice,
-			wantDur:  7 * time.Second,
+			wantOK:     true,
+			wantKind:   model.MessageKindVoice,
+			wantDur:    7 * time.Second,
+			wantFileID: "voice-abc",
 		},
 		{
 			name: "audio file (не voice) → пропускаем как неподдерживаемый тип",
@@ -83,6 +85,7 @@ func TestUpdateMapper_ToIncomingMessage(t *testing.T) {
 			require.Equal(t, tt.wantKind, got.Kind)
 			require.Equal(t, tt.wantText, got.Text)
 			require.Equal(t, tt.wantDur, got.VoiceDuration)
+			require.Equal(t, tt.wantFileID, got.VoiceFileID)
 		})
 	}
 }

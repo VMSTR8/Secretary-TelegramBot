@@ -7,13 +7,16 @@ import (
 	"noirbot/internal/domain/repository"
 	"noirbot/internal/domain/service"
 	"noirbot/internal/gateways/deepseek"
+	"noirbot/internal/gateways/groq"
 	httpgw "noirbot/internal/gateways/http"
 	"noirbot/internal/gateways/memory"
 	redisstore "noirbot/internal/gateways/redis"
+	"noirbot/internal/gateways/telegram/files"
 	"noirbot/internal/gateways/telegram/inbound"
 	"noirbot/internal/gateways/telegram/outbound"
 	"noirbot/internal/usecase/handle_business_connection"
 	"noirbot/internal/usecase/handle_business_message"
+	"noirbot/internal/usecase/handle_long_voice"
 	"noirbot/pkg/config"
 	"os"
 
@@ -32,6 +35,7 @@ func main() {
 			newGreetingDetector,
 			newFloodDetector,
 			newShortVoiceDetector,
+			newLongVoiceDetector,
 			newVoiceReplyWindowStore,
 
 			newOwnerWhitelist,
@@ -43,6 +47,12 @@ func main() {
 
 			newDeepseekConfig,
 			newLLMClient,
+
+			newGroqConfig,
+			newTranscriber,
+			newVoiceDownloader,
+			newHandleLongVoiceConfig,
+			handle_long_voice.New,
 
 			newRedisClient,
 
@@ -188,4 +198,36 @@ func newRedisClient(cfg *config.Config) *redis.Client {
 	})
 
 	return rdb
+}
+
+func newLongVoiceDetector(cfg *config.Config) *service.LongVoiceDetector {
+	return service.NewLongVoiceDetector(
+		service.LongVoiceDetectorConfig{
+			MinDuration: cfg.ShortVoice.MaxDuration,
+			MaxDuration: cfg.LongVoice.MaxDuration,
+		},
+	)
+}
+
+func newGroqConfig(cfg *config.Config) groq.Config {
+	return groq.Config{
+		BaseURL: cfg.Groq.BaseURL,
+		APIKey:  cfg.Groq.APIKey,
+		Model:   cfg.Groq.Model,
+		Timeout: cfg.Groq.Timeout,
+	}
+}
+
+func newTranscriber(cfg groq.Config) repository.Transcriber {
+	return groq.NewClient(cfg)
+}
+
+func newVoiceDownloader(b *bot.Bot) repository.VoiceDownloader {
+	return files.NewDownloader(b)
+}
+
+func newHandleLongVoiceConfig(cfg *config.Config) handle_long_voice.Config {
+	return handle_long_voice.Config{
+		LongVoicePrompt: cfg.Bot.LongVoicePrompt,
+	}
 }

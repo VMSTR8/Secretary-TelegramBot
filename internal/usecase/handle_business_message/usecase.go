@@ -10,6 +10,10 @@ import (
 	"time"
 )
 
+type LongVoiceHandler interface {
+	Execute(ctx context.Context, msg model.IncomingMessage) error
+}
+
 type Config struct {
 	SystemPrompt             string
 	ShortVoicePrompt         string
@@ -24,9 +28,11 @@ type Usecase struct {
 	greetingDetector   *service.GreetingDetector
 	floodDetector      *service.FloodDetector
 	shortVoiceDetector *service.ShortVoiceDetector
+	longVoiceDetector  *service.LongVoiceDetector
 	voiceWindow        repository.VoiceReplyWindowStore
 	llm                repository.LLMClient
 	sender             repository.BusinessSender
+	longVoiceUC        LongVoiceHandler
 	log                *slog.Logger
 }
 
@@ -43,9 +49,11 @@ func New(
 	greetingDetector *service.GreetingDetector,
 	floodDetector *service.FloodDetector,
 	shortVoiceDetector *service.ShortVoiceDetector,
+	longVoiceDetector *service.LongVoiceDetector,
 	voiceWindow repository.VoiceReplyWindowStore,
 	llm repository.LLMClient,
 	sender repository.BusinessSender,
+	longVoiceUC LongVoiceHandler,
 	log *slog.Logger,
 ) *Usecase {
 	return &Usecase{
@@ -56,9 +64,11 @@ func New(
 		greetingDetector:   greetingDetector,
 		floodDetector:      floodDetector,
 		shortVoiceDetector: shortVoiceDetector,
+		longVoiceDetector:  longVoiceDetector,
 		voiceWindow:        voiceWindow,
 		llm:                llm,
 		sender:             sender,
+		longVoiceUC:        longVoiceUC,
 		log:                log.With("usecase", "handle_business_message"),
 	}
 }
@@ -93,8 +103,10 @@ func (uc *Usecase) Execute(ctx context.Context, msg model.IncomingMessage) error
 		return nil
 	}
 
-	shortVoice := decision.Kind == model.TriggerKindShortVoice
-	if shortVoice {
+	switch decision.Kind {
+	case model.TriggerKindLongVoice:
+		return uc.longVoiceUC.Execute(ctx, msg)
+	case model.TriggerKindShortVoice:
 		acquired, tryErr := uc.voiceWindow.TryEnter(
 			ctx,
 			msg.BusinessConnectionID,
@@ -108,6 +120,10 @@ func (uc *Usecase) Execute(ctx context.Context, msg model.IncomingMessage) error
 		if !acquired {
 			return nil
 		}
+	case model.TriggerKindGreeting, model.TriggerKindFlood:
+		// shared text reply path below
+	case model.TriggerKindNone:
+		return nil
 	}
 
 	uc.log.InfoContext(ctx, "trigger fired",
@@ -126,11 +142,11 @@ func (uc *Usecase) Execute(ctx context.Context, msg model.IncomingMessage) error
 		)
 	}
 
-	in := uc.llmInputs(msg)
+	in := uc.llmInputs(decision, msg)
 
 	reply, err := uc.llm.Generate(ctx, in.SystemPrompt, in.UserText)
 	if err != nil {
-		if shortVoice {
+		if decision.Kind == model.TriggerKindShortVoice {
 			uc.releaseVoiceWindow(ctx, msg)
 		}
 
@@ -140,7 +156,7 @@ func (uc *Usecase) Execute(ctx context.Context, msg model.IncomingMessage) error
 	replyTarget.Text = reply
 
 	if sndErr := uc.sender.Send(ctx, replyTarget); sndErr != nil {
-		if shortVoice {
+		if decision.Kind == model.TriggerKindShortVoice {
 			uc.releaseVoiceWindow(ctx, msg)
 		}
 
@@ -184,7 +200,12 @@ func (uc *Usecase) resolveOwner(ctx context.Context, connectionID string) (model
 func (uc *Usecase) classify(ctx context.Context, msg model.IncomingMessage) (model.TriggerDecision, error) {
 	switch msg.Kind {
 	case model.MessageKindVoice:
-		return uc.shortVoiceDetector.Detect(msg), nil
+		res := uc.shortVoiceDetector.Detect(msg)
+		if res.Kind == model.TriggerKindNone {
+			return uc.longVoiceDetector.Detect(msg), nil
+		}
+
+		return res, nil
 	case model.MessageKindText:
 		if decision := uc.greetingDetector.Detect(msg); decision.ShouldReply() {
 			return decision, nil
@@ -196,8 +217,8 @@ func (uc *Usecase) classify(ctx context.Context, msg model.IncomingMessage) (mod
 	}
 }
 
-func (uc *Usecase) llmInputs(msg model.IncomingMessage) llmInput {
-	if msg.Kind == model.MessageKindVoice {
+func (uc *Usecase) llmInputs(decision model.TriggerDecision, msg model.IncomingMessage) llmInput {
+	if decision.Kind == model.TriggerKindShortVoice {
 		return llmInput{SystemPrompt: uc.cfg.ShortVoicePrompt, UserText: ""}
 	}
 
