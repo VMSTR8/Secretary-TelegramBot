@@ -1,4 +1,4 @@
-package handle_business_message
+package businessmsg
 
 import (
 	"context"
@@ -50,6 +50,16 @@ var (
 	responseWindow = 60 * time.Second
 )
 
+type stubLongVoiceHandler struct {
+	called bool
+}
+
+func (s *stubLongVoiceHandler) Execute(_ context.Context, _ model.IncomingMessage) error {
+	s.called = true
+
+	return nil
+}
+
 func expectShowThinking(ctx context.Context, sender *mock.MockBusinessSender, msg model.IncomingMessage) {
 	sender.EXPECT().ShowThinking(ctx, model.ReplyDraft{
 		BusinessConnectionID: msg.BusinessConnectionID,
@@ -91,10 +101,14 @@ func (m usecaseMocks) expectTextReply(ctx context.Context, sendErr error) {
 	m.sender.EXPECT().Send(ctx, gomock.Any()).Return(sendErr)
 }
 
-func (m usecaseMocks) usecase(t *testing.T, voiceCooldown repository.VoiceReplyWindowStore) *Usecase {
+func (m usecaseMocks) usecase(
+	t *testing.T,
+	voiceCooldown repository.VoiceReplyWindowStore,
+	longVoiceUC LongVoiceHandler,
+) *Usecase {
 	t.Helper()
 
-	return newUsecase(t, m.whitelist, m.connStore, m.accountReader, m.llm, m.sender, voiceCooldown)
+	return newUsecase(t, m.whitelist, m.connStore, m.accountReader, m.llm, m.sender, voiceCooldown, longVoiceUC)
 }
 
 // mockVoiceCooldown returns a mock VoiceReplyWindowStore that expects
@@ -141,6 +155,7 @@ func newUsecase(
 	llm *mock.MockLLMClient,
 	sender *mock.MockBusinessSender,
 	voiceCooldown repository.VoiceReplyWindowStore,
+	longVoiceUC LongVoiceHandler,
 ) *Usecase {
 	t.Helper()
 
@@ -163,6 +178,15 @@ func newUsecase(
 		MaxDuration: 10 * time.Second,
 	})
 
+	longVoice := service.NewLongVoiceDetector(service.LongVoiceDetectorConfig{
+		MinDuration: 10 * time.Second,
+		MaxDuration: 600 * time.Second,
+	})
+
+	if longVoiceUC == nil {
+		longVoiceUC = &stubLongVoiceHandler{}
+	}
+
 	return New(
 		Config{
 			SystemPrompt:             systemPrompt,
@@ -175,9 +199,11 @@ func newUsecase(
 		greeting,
 		flood,
 		shortVoice,
+		longVoice,
 		voiceCooldown,
 		llm,
 		sender,
+		longVoiceUC,
 		slog.Default(),
 	)
 }
@@ -226,7 +252,7 @@ func TestUsecase_TextMessages(t *testing.T) {
 				m.connStore.EXPECT().Get(ctx, testConn.ID).Return(testConn, true, nil)
 				m.whitelist.EXPECT().IsAllowed(ctx, testConn.Owner.UserID).Return(false, nil)
 
-				return m.usecase(t, mockVoiceCooldown(ctrl))
+				return m.usecase(t, mockVoiceCooldown(ctrl), nil)
 			},
 			msg:     testMsg,
 			wantErr: nil,
@@ -244,7 +270,7 @@ func TestUsecase_TextMessages(t *testing.T) {
 					Text:                 testReply,
 				}).Return(nil)
 
-				return m.usecase(t, mockVoiceCooldown(ctrl))
+				return m.usecase(t, mockVoiceCooldown(ctrl), nil)
 			},
 			msg:     testMsg,
 			wantErr: nil,
@@ -255,7 +281,7 @@ func TestUsecase_TextMessages(t *testing.T) {
 				m := newMocks(ctrl)
 				m.expectAllowedOwner(ctx)
 
-				return m.usecase(t, mockVoiceCooldown(ctrl))
+				return m.usecase(t, mockVoiceCooldown(ctrl), nil)
 			},
 			msg: model.IncomingMessage{
 				BusinessConnectionID: "conn-1",
@@ -287,7 +313,7 @@ func TestUsecase_ErrorPropagation(t *testing.T) {
 				m.llm.EXPECT().Generate(ctx, systemPrompt, testMsg.Text).
 					Return("", errDeepseekTimeoutStub)
 
-				return m.usecase(t, mockVoiceCooldown(ctrl))
+				return m.usecase(t, mockVoiceCooldown(ctrl), nil)
 			},
 			msg:     testMsg,
 			wantErr: ErrLLMGenerate,
@@ -298,7 +324,7 @@ func TestUsecase_ErrorPropagation(t *testing.T) {
 				m := newMocks(ctrl)
 				m.expectTextReply(ctx, errTelegramRateLimitStub)
 
-				return m.usecase(t, mockVoiceCooldown(ctrl))
+				return m.usecase(t, mockVoiceCooldown(ctrl), nil)
 			},
 			msg:     testMsg,
 			wantErr: ErrSend,
@@ -315,7 +341,7 @@ func TestUsecase_ErrorPropagation(t *testing.T) {
 				m.llm.EXPECT().Generate(ctx, systemPrompt, testMsg.Text).Return(testReply, nil)
 				m.sender.EXPECT().Send(ctx, gomock.Any()).Return(nil)
 
-				return m.usecase(t, mockVoiceCooldown(ctrl))
+				return m.usecase(t, mockVoiceCooldown(ctrl), nil)
 			},
 			msg:     testMsg,
 			wantErr: nil,
@@ -326,7 +352,7 @@ func TestUsecase_ErrorPropagation(t *testing.T) {
 				m := newMocks(ctrl)
 				m.expectAllowedOwner(ctx)
 
-				return m.usecase(t, mockVoiceCooldownError(ctrl))
+				return m.usecase(t, mockVoiceCooldownError(ctrl), nil)
 			},
 			msg:     testVoiceMsg,
 			wantErr: ErrVoiceWindow,
@@ -355,7 +381,7 @@ func TestUsecase_EdgeCases(t *testing.T) {
 				m.llm.EXPECT().Generate(ctx, systemPrompt, testMsg.Text).Return(testReply, nil)
 				m.sender.EXPECT().Send(ctx, gomock.Any()).Return(nil)
 
-				return m.usecase(t, mockVoiceCooldown(ctrl))
+				return m.usecase(t, mockVoiceCooldown(ctrl), nil)
 			},
 			msg:     testMsg,
 			wantErr: nil,
@@ -366,7 +392,7 @@ func TestUsecase_EdgeCases(t *testing.T) {
 				m := newMocks(ctrl)
 				m.expectTextReply(ctx, nil)
 
-				return m.usecase(t, mockVoiceCooldown(ctrl))
+				return m.usecase(t, mockVoiceCooldown(ctrl), nil)
 			},
 			msg:     testMsg,
 			wantErr: nil,
@@ -396,7 +422,7 @@ func TestUsecase_VoiceMessages(t *testing.T) {
 					Text:                 testReply,
 				}).Return(nil)
 
-				return m.usecase(t, mockVoiceCooldownAcquired(ctrl))
+				return m.usecase(t, mockVoiceCooldownAcquired(ctrl), nil)
 			},
 			msg:     testVoiceMsg,
 			wantErr: nil,
@@ -418,7 +444,7 @@ func TestUsecase_VoiceMessages(t *testing.T) {
 					Release(gomock.Any(), "conn-1", int64(999)).
 					Return(nil)
 
-				return m.usecase(t, voiceWindow)
+				return m.usecase(t, voiceWindow, nil)
 			},
 			msg:     testVoiceMsg,
 			wantErr: ErrLLMGenerate,
@@ -429,27 +455,58 @@ func TestUsecase_VoiceMessages(t *testing.T) {
 				m := newMocks(ctrl)
 				m.expectAllowedOwner(ctx)
 
-				return m.usecase(t, mockVoiceCooldownBlocked(ctrl))
+				return m.usecase(t, mockVoiceCooldownBlocked(ctrl), nil)
 			},
 			msg:     testVoiceMsg,
 			wantErr: nil,
 		},
-		{
-			name: "long voice > порога — бот молчит, store и LLM не вызываются",
-			setup: func(ctrl *gomock.Controller) *Usecase {
-				m := newMocks(ctrl)
-				m.expectAllowedOwner(ctx)
-				// TryEnter is never called — gomock enforces this
-				return m.usecase(t, mockVoiceCooldown(ctrl))
-			},
-			msg: model.IncomingMessage{
-				BusinessConnectionID: "conn-1",
-				GuestID:              999,
-				Kind:                 model.MessageKindVoice,
-				VoiceDuration:        30 * time.Second,
-				ReceivedAt:           time.Now(),
-			},
-			wantErr: nil,
-		},
+	})
+}
+
+func TestUsecase_LongVoice(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("в диапазоне — делегирует в longVoiceUC, LLM не вызывается", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		m := newMocks(ctrl)
+		m.expectAllowedOwner(ctx)
+
+		longVoiceUC := &stubLongVoiceHandler{}
+		uc := m.usecase(t, mockVoiceCooldown(ctrl), longVoiceUC)
+
+		msg := model.IncomingMessage{
+			BusinessConnectionID: "conn-1",
+			GuestID:              999,
+			Kind:                 model.MessageKindVoice,
+			VoiceDuration:        30 * time.Second,
+			ReceivedAt:           time.Now(),
+		}
+
+		err := uc.Execute(ctx, msg)
+
+		require.NoError(t, err)
+		require.True(t, longVoiceUC.called)
+	})
+
+	t.Run("длиннее max — молчит, longVoiceUC не вызывается", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		m := newMocks(ctrl)
+		m.expectAllowedOwner(ctx)
+
+		longVoiceUC := &stubLongVoiceHandler{}
+		uc := m.usecase(t, mockVoiceCooldown(ctrl), longVoiceUC)
+
+		msg := model.IncomingMessage{
+			BusinessConnectionID: "conn-1",
+			GuestID:              999,
+			Kind:                 model.MessageKindVoice,
+			VoiceDuration:        700 * time.Second,
+			ReceivedAt:           time.Now(),
+		}
+
+		err := uc.Execute(ctx, msg)
+
+		require.NoError(t, err)
+		require.False(t, longVoiceUC.called)
 	})
 }

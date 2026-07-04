@@ -7,13 +7,16 @@ import (
 	"noirbot/internal/domain/repository"
 	"noirbot/internal/domain/service"
 	"noirbot/internal/gateways/deepseek"
+	"noirbot/internal/gateways/groq"
 	httpgw "noirbot/internal/gateways/http"
 	"noirbot/internal/gateways/memory"
 	redisstore "noirbot/internal/gateways/redis"
+	"noirbot/internal/gateways/telegram/files"
 	"noirbot/internal/gateways/telegram/inbound"
 	"noirbot/internal/gateways/telegram/outbound"
-	"noirbot/internal/usecase/handle_business_connection"
-	"noirbot/internal/usecase/handle_business_message"
+	"noirbot/internal/usecase/businessconn"
+	"noirbot/internal/usecase/businessmsg"
+	"noirbot/internal/usecase/longvoice"
 	"noirbot/pkg/config"
 	"os"
 
@@ -32,6 +35,7 @@ func main() {
 			newGreetingDetector,
 			newFloodDetector,
 			newShortVoiceDetector,
+			newLongVoiceDetector,
 			newVoiceReplyWindowStore,
 
 			newOwnerWhitelist,
@@ -44,11 +48,17 @@ func main() {
 			newDeepseekConfig,
 			newLLMClient,
 
+			newGroqConfig,
+			newTranscriber,
+			newVoiceDownloader,
+			newHandleLongVoiceConfig,
+			longvoice.New,
+
 			newRedisClient,
 
 			newHandleBusinessMessageConfig,
-			handle_business_connection.New,
-			handle_business_message.New,
+			businessconn.New,
+			businessmsg.New,
 
 			inbound.NewLazyHandler,
 			inbound.NewUpdateMapper,
@@ -168,8 +178,8 @@ func newLLMClient(c deepseek.Config) repository.LLMClient {
 	return deepseek.NewClient(c)
 }
 
-func newHandleBusinessMessageConfig(cfg *config.Config) handle_business_message.Config {
-	return handle_business_message.Config{
+func newHandleBusinessMessageConfig(cfg *config.Config) businessmsg.Config {
+	return businessmsg.Config{
 		SystemPrompt:             cfg.Bot.SystemPrompt,
 		ShortVoicePrompt:         cfg.Bot.ShortVoicePrompt,
 		ShortVoiceResponseWindow: cfg.ShortVoice.ResponseWindow,
@@ -188,4 +198,35 @@ func newRedisClient(cfg *config.Config) *redis.Client {
 	})
 
 	return rdb
+}
+
+func newLongVoiceDetector(cfg *config.Config) *service.LongVoiceDetector {
+	return service.NewLongVoiceDetector(
+		service.LongVoiceDetectorConfig{
+			MaxDuration: cfg.LongVoice.MaxDuration,
+		},
+	)
+}
+
+func newGroqConfig(cfg *config.Config) groq.Config {
+	return groq.Config{
+		BaseURL: cfg.Groq.BaseURL,
+		APIKey:  cfg.Groq.APIKey,
+		Model:   cfg.Groq.Model,
+		Timeout: cfg.Groq.Timeout,
+	}
+}
+
+func newTranscriber(cfg groq.Config) repository.Transcriber {
+	return groq.NewClient(cfg)
+}
+
+func newVoiceDownloader(b *bot.Bot, cfg *config.Config) repository.VoiceDownloader {
+	return files.NewDownloader(b, cfg.Telegram.FileDownloadTimeout)
+}
+
+func newHandleLongVoiceConfig(cfg *config.Config) longvoice.Config {
+	return longvoice.Config{
+		LongVoicePrompt: cfg.Bot.LongVoicePrompt,
+	}
 }

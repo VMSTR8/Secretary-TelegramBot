@@ -7,6 +7,7 @@ const (
 	TriggerKindGreeting   TriggerKind = "greeting"
 	TriggerKindFlood      TriggerKind = "flood"
 	TriggerKindShortVoice TriggerKind = "short_voice"
+	TriggerKindLongVoice  TriggerKind = "long_voice"
 )
 
 type TriggerDecision struct {

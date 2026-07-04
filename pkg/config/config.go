@@ -12,16 +12,19 @@ type Config struct {
 	HTTP          HTTPConfig
 	Redis         RedisConfig
 	DeepSeek      DeepSeekConfig
+	Groq          GroqConfig
 	Bot           BotConfig
 	Flood         FloodConfig
 	Greetings     []string `default:"привет,прив,здоров,хай,ку" envconfig:"GREETINGS"`
 	ShortVoice    ShortVoiceConfig
+	LongVoice     LongVoiceConfig
 	AllowedOwners []int64 `envconfig:"ALLOWED_OWNERS"`
 }
 
 type TelegramConfig struct {
-	BotToken      string `envconfig:"BOT_TOKEN"      required:"true"`
-	WebhookSecret string `envconfig:"WEBHOOK_SECRET"`
+	BotToken            string        `envconfig:"BOT_TOKEN"      required:"true"`
+	WebhookSecret       string        `envconfig:"WEBHOOK_SECRET"`
+	FileDownloadTimeout time.Duration `default:"120s"             envconfig:"TELEGRAM_FILE_TIMEOUT"`
 }
 
 type HTTPConfig struct {
@@ -49,9 +52,17 @@ type DeepSeekConfig struct {
 	Timeout time.Duration `default:"30s"                         envconfig:"DEEPSEEK_TIMEOUT"`
 }
 
+type GroqConfig struct {
+	BaseURL string        `envconfig:"GROQ_BASE_URL"  required:"true"`
+	APIKey  string        `envconfig:"GROQ_API_KEY"   required:"true"`
+	Model   string        `default:"whisper-large-v3" envconfig:"GROQ_MODEL"`
+	Timeout time.Duration `default:"30s"              envconfig:"GROQ_TIMEOUT"`
+}
+
 type BotConfig struct {
 	SystemPrompt     string `envconfig:"BOT_SYSTEM_PROMPT"      required:"true"`
 	ShortVoicePrompt string `envconfig:"BOT_SHORT_VOICE_PROMPT" required:"true"`
+	LongVoicePrompt  string `envconfig:"BOT_LONG_VOICE_PROMPT"  required:"true"`
 }
 
 type FloodConfig struct {
@@ -66,6 +77,10 @@ type ShortVoiceConfig struct {
 	ResponseWindow time.Duration `default:"60s" envconfig:"SHORT_VOICE_RESPONSE_WINDOW"`
 }
 
+type LongVoiceConfig struct {
+	MaxDuration time.Duration `default:"600s" envconfig:"LONG_VOICE_MAX_DURATION"`
+}
+
 func Load() (*Config, error) {
 	cfg := &Config{}
 	if err := envconfig.Process("", cfg); err != nil {
@@ -77,6 +92,10 @@ func Load() (*Config, error) {
 	}
 
 	if err := cfg.validateShortVoice(); err != nil {
+		return nil, fmt.Errorf("validate config: %w", err)
+	}
+
+	if err := cfg.validateLongVoice(); err != nil {
 		return nil, fmt.Errorf("validate config: %w", err)
 	}
 
@@ -97,7 +116,7 @@ func (c *Config) validateFlood() error {
 
 func (c *Config) validateShortVoice() error {
 	if c.ShortVoice.ResponseWindow <= 0 || c.ShortVoice.MaxDuration <= 0 {
-		return fmt.Errorf("%w: response_window=%d, max_duration=%d",
+		return fmt.Errorf("%w: response_window=%s, max_duration=%s",
 			ErrInvalidShortVoiceCfg,
 			c.ShortVoice.ResponseWindow,
 			c.ShortVoice.MaxDuration,
@@ -105,4 +124,21 @@ func (c *Config) validateShortVoice() error {
 	}
 
 	return nil
+}
+
+func (c *Config) validateLongVoice() error {
+	switch {
+	case c.LongVoice.MaxDuration <= 0:
+		return fmt.Errorf("%w: max_duration=%s",
+			ErrInvalidLongVoiceCfg,
+			c.LongVoice.MaxDuration)
+	case c.ShortVoice.MaxDuration >= c.LongVoice.MaxDuration:
+		return fmt.Errorf("%w: short_max=%s, long_max=%s",
+			ErrVoiceDurationOverlap,
+			c.ShortVoice.MaxDuration,
+			c.LongVoice.MaxDuration,
+		)
+	default:
+		return nil
+	}
 }
