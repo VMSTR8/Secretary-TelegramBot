@@ -43,3 +43,6 @@ docker/traefik/.env
 
 # my personal compose
 docker/docker-compose-local.yaml
+
+# codegraph
+.codegraph
