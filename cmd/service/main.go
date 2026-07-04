@@ -53,6 +53,7 @@ func main() {
 			newVoiceDownloader,
 			newHandleLongVoiceConfig,
 			longvoice.New,
+			newLongVoiceHandler,
 
 			newRedisClient,
 
@@ -229,4 +230,8 @@ func newHandleLongVoiceConfig(cfg *config.Config) longvoice.Config {
 	return longvoice.Config{
 		LongVoicePrompt: cfg.Bot.LongVoicePrompt,
 	}
+}
+
+func newLongVoiceHandler(uc *longvoice.Usecase) businessmsg.LongVoiceHandler {
+	return uc
 }
