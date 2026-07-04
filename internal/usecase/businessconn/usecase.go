@@ -1,4 +1,4 @@
-package handle_business_connection
+package businessconn
 
 import (
 	"context"
@@ -16,7 +16,7 @@ type Usecase struct {
 func New(store repository.BusinessConnectionStore, log *slog.Logger) *Usecase {
 	return &Usecase{
 		store: store,
-		log:   log.With("usecase", "handle_business_connection"),
+		log:   log.With("usecase", "businessconn"),
 	}
 }
 

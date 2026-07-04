@@ -3,23 +3,23 @@ package inbound
 import (
 	"context"
 	"log/slog"
-	"noirbot/internal/usecase/handle_business_connection"
-	"noirbot/internal/usecase/handle_business_message"
+	"noirbot/internal/usecase/businessconn"
+	"noirbot/internal/usecase/businessmsg"
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
 )
 
 type UpdateRouter struct {
-	connUC *handle_business_connection.Usecase
-	msgUC  *handle_business_message.Usecase
+	connUC *businessconn.Usecase
+	msgUC  *businessmsg.Usecase
 	mapper *UpdateMapper
 	log    *slog.Logger
 }
 
 func NewUpdateRouter(
-	connUC *handle_business_connection.Usecase,
-	msgUC *handle_business_message.Usecase,
+	connUC *businessconn.Usecase,
+	msgUC *businessmsg.Usecase,
 	m *UpdateMapper,
 	log *slog.Logger,
 ) *UpdateRouter {
@@ -36,7 +36,7 @@ func (r *UpdateRouter) Handle(ctx context.Context, _ *bot.Bot, update *models.Up
 	case update.BusinessConnection != nil:
 		conn := r.mapper.ToBusinessConnection(update.BusinessConnection)
 		if err := r.connUC.Execute(ctx, conn); err != nil {
-			r.log.WarnContext(ctx, "handle_business_connection failed", "err", err)
+			r.log.WarnContext(ctx, "businessconn failed", "err", err)
 		}
 	case update.BusinessMessage != nil:
 		msg, ok := r.mapper.ToIncomingMessage(update.BusinessMessage)
@@ -47,7 +47,7 @@ func (r *UpdateRouter) Handle(ctx context.Context, _ *bot.Bot, update *models.Up
 		}
 
 		if err := r.msgUC.Execute(ctx, msg); err != nil {
-			r.log.ErrorContext(ctx, "handle_business_message failed",
+			r.log.ErrorContext(ctx, "businessmsg failed",
 				"err", err,
 				"guest_id", msg.GuestID,
 				"conn_id", msg.BusinessConnectionID,

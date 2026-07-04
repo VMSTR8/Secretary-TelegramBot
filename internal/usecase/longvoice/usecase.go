@@ -1,4 +1,4 @@
-package handle_long_voice
+package longvoice
 
 import (
 	"context"
@@ -36,7 +36,7 @@ func New(
 		transcriber: transcriber,
 		llmClient:   llmClient,
 		sender:      sender,
-		log:         log.With("usecase", "handle_long_voice"),
+		log:         log.With("usecase", "longvoice"),
 	}
 }
 

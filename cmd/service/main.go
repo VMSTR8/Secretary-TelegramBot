@@ -14,9 +14,9 @@ import (
 	"noirbot/internal/gateways/telegram/files"
 	"noirbot/internal/gateways/telegram/inbound"
 	"noirbot/internal/gateways/telegram/outbound"
-	"noirbot/internal/usecase/handle_business_connection"
-	"noirbot/internal/usecase/handle_business_message"
-	"noirbot/internal/usecase/handle_long_voice"
+	"noirbot/internal/usecase/businessconn"
+	"noirbot/internal/usecase/businessmsg"
+	"noirbot/internal/usecase/longvoice"
 	"noirbot/pkg/config"
 	"os"
 
@@ -52,13 +52,13 @@ func main() {
 			newTranscriber,
 			newVoiceDownloader,
 			newHandleLongVoiceConfig,
-			handle_long_voice.New,
+			longvoice.New,
 
 			newRedisClient,
 
 			newHandleBusinessMessageConfig,
-			handle_business_connection.New,
-			handle_business_message.New,
+			businessconn.New,
+			businessmsg.New,
 
 			inbound.NewLazyHandler,
 			inbound.NewUpdateMapper,
@@ -178,8 +178,8 @@ func newLLMClient(c deepseek.Config) repository.LLMClient {
 	return deepseek.NewClient(c)
 }
 
-func newHandleBusinessMessageConfig(cfg *config.Config) handle_business_message.Config {
-	return handle_business_message.Config{
+func newHandleBusinessMessageConfig(cfg *config.Config) businessmsg.Config {
+	return businessmsg.Config{
 		SystemPrompt:             cfg.Bot.SystemPrompt,
 		ShortVoicePrompt:         cfg.Bot.ShortVoicePrompt,
 		ShortVoiceResponseWindow: cfg.ShortVoice.ResponseWindow,
@@ -225,8 +225,8 @@ func newVoiceDownloader(b *bot.Bot, cfg *config.Config) repository.VoiceDownload
 	return files.NewDownloader(b, cfg.Telegram.FileDownloadTimeout)
 }
 
-func newHandleLongVoiceConfig(cfg *config.Config) handle_long_voice.Config {
-	return handle_long_voice.Config{
+func newHandleLongVoiceConfig(cfg *config.Config) longvoice.Config {
+	return longvoice.Config{
 		LongVoicePrompt: cfg.Bot.LongVoicePrompt,
 	}
 }

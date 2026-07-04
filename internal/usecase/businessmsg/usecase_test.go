@@ -1,4 +1,4 @@
-package handle_business_message
+package businessmsg
 
 import (
 	"context"

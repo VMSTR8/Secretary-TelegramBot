@@ -1,4 +1,4 @@
-package handle_business_message
+package businessmsg
 
 import (
 	"context"
@@ -69,7 +69,7 @@ func New(
 		llm:                llm,
 		sender:             sender,
 		longVoiceUC:        longVoiceUC,
-		log:                log.With("usecase", "handle_business_message"),
+		log:                log.With("usecase", "businessmsg"),
 	}
 }
 

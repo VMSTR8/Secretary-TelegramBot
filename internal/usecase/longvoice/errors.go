@@ -1,4 +1,4 @@
-package handle_long_voice
+package longvoice
 
 import "errors"
 
