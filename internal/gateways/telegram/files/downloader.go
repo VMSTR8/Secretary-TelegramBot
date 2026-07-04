@@ -5,34 +5,44 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/go-telegram/bot"
+	"github.com/go-telegram/bot/models"
 )
 
+type fileGetter interface {
+	GetFile(ctx context.Context, params *bot.GetFileParams) (*models.File, error)
+	FileDownloadLink(f *models.File) string
+}
 type Downloader struct {
-	bot *bot.Bot
+	client     fileGetter
+	httpClient *http.Client
 }
 
-func NewDownloader(b *bot.Bot) *Downloader {
+func NewDownloader(b *bot.Bot, timeout time.Duration) *Downloader {
 	return &Downloader{
-		bot: b,
+		client: b,
+		httpClient: &http.Client{
+			Timeout: timeout,
+		},
 	}
 }
 
 func (d *Downloader) Download(ctx context.Context, fileID string) (io.ReadCloser, error) {
-	f, err := d.bot.GetFile(ctx, &bot.GetFileParams{FileID: fileID})
+	f, err := d.client.GetFile(ctx, &bot.GetFileParams{FileID: fileID})
 	if err != nil {
 		return nil, fmt.Errorf("tg downloader: get file %s: %w", fileID, err)
 	}
 
-	l := d.bot.FileDownloadLink(f)
+	l := d.client.FileDownloadLink(f)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, l, http.NoBody)
 	if err != nil {
 		return nil, fmt.Errorf("tg downloader: new request: %w", err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := d.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("tg downloader: do request: %w", err)
 	}

@@ -203,7 +203,6 @@ func newRedisClient(cfg *config.Config) *redis.Client {
 func newLongVoiceDetector(cfg *config.Config) *service.LongVoiceDetector {
 	return service.NewLongVoiceDetector(
 		service.LongVoiceDetectorConfig{
-			MinDuration: cfg.ShortVoice.MaxDuration,
 			MaxDuration: cfg.LongVoice.MaxDuration,
 		},
 	)
@@ -222,8 +221,8 @@ func newTranscriber(cfg groq.Config) repository.Transcriber {
 	return groq.NewClient(cfg)
 }
 
-func newVoiceDownloader(b *bot.Bot) repository.VoiceDownloader {
-	return files.NewDownloader(b)
+func newVoiceDownloader(b *bot.Bot, cfg *config.Config) repository.VoiceDownloader {
+	return files.NewDownloader(b, cfg.Telegram.FileDownloadTimeout)
 }
 
 func newHandleLongVoiceConfig(cfg *config.Config) handle_long_voice.Config {

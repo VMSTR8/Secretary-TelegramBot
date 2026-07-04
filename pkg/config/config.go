@@ -22,8 +22,9 @@ type Config struct {
 }
 
 type TelegramConfig struct {
-	BotToken      string `envconfig:"BOT_TOKEN"      required:"true"`
-	WebhookSecret string `envconfig:"WEBHOOK_SECRET"`
+	BotToken            string        `envconfig:"BOT_TOKEN"      required:"true"`
+	WebhookSecret       string        `envconfig:"WEBHOOK_SECRET"`
+	FileDownloadTimeout time.Duration `default:"120s"             envconfig:"TELEGRAM_FILE_TIMEOUT"`
 }
 
 type HTTPConfig struct {
@@ -77,7 +78,6 @@ type ShortVoiceConfig struct {
 }
 
 type LongVoiceConfig struct {
-	MinDuration time.Duration `default:"10s"  envconfig:"LONG_VOICE_MIN_DURATION"`
 	MaxDuration time.Duration `default:"600s" envconfig:"LONG_VOICE_MAX_DURATION"`
 }
 
@@ -116,7 +116,7 @@ func (c *Config) validateFlood() error {
 
 func (c *Config) validateShortVoice() error {
 	if c.ShortVoice.ResponseWindow <= 0 || c.ShortVoice.MaxDuration <= 0 {
-		return fmt.Errorf("%w: response_window=%d, max_duration=%d",
+		return fmt.Errorf("%w: response_window=%s, max_duration=%s",
 			ErrInvalidShortVoiceCfg,
 			c.ShortVoice.ResponseWindow,
 			c.ShortVoice.MaxDuration,
@@ -127,13 +127,18 @@ func (c *Config) validateShortVoice() error {
 }
 
 func (c *Config) validateLongVoice() error {
-	if c.LongVoice.MaxDuration <= c.LongVoice.MinDuration {
-		return fmt.Errorf("%w: min=%s, max=%s",
+	switch {
+	case c.LongVoice.MaxDuration <= 0:
+		return fmt.Errorf("%w: max_duration=%s",
 			ErrInvalidLongVoiceCfg,
-			c.LongVoice.MinDuration,
+			c.LongVoice.MaxDuration)
+	case c.ShortVoice.MaxDuration >= c.LongVoice.MaxDuration:
+		return fmt.Errorf("%w: short_max=%s, long_max=%s",
+			ErrVoiceDurationOverlap,
+			c.ShortVoice.MaxDuration,
 			c.LongVoice.MaxDuration,
 		)
+	default:
+		return nil
 	}
-
-	return nil
 }
